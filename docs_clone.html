@@ -1,0 +1,2004 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docs Clone - โปรแกรมจัดการเอกสารและนำเสนอออนไลน์</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Sarabun, Prompt, Kanit, Inter, Charm -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Charm:wght@400;700&family=Inter:wght@300;400;500;600;700&family=Kanit:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Prompt:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Sarabun:ital,wght@0,300;0,400;0,500;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    
+    <!-- Google Material Symbols Outlined -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+
+    <!-- External Libraries for File Conversion (.docx, .odt, .pdf) -->
+    <!-- Mammoth.js for importing .docx -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- JSZip for generating & reading .docx and .odt archives -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- html2pdf.js for exporting .pdf -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        :root {
+            --docs-bg: #F9FBFD;
+            --docs-toolbar: #EDF2FA;
+            --docs-border: #C7C7C7;
+            --docs-blue: #1A73E8;
+            --page-width: 210mm;
+            --page-min-height: 297mm;
+            --page-padding-top: 25.4mm;
+            --page-padding-bottom: 25.4mm;
+            --page-padding-left: 25.4mm;
+            --page-padding-right: 25.4mm;
+            --line-spacing: 1.5;
+        }
+
+        body {
+            font-family: 'Inter', 'Sarabun', sans-serif;
+            background-color: var(--docs-bg);
+            color: #1f1f1f;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .material-symbols-outlined {
+            font-size: 20px;
+            line-height: 1;
+            vertical-align: middle;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f3f4;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #dadce0;
+            border-radius: 5px;
+            border: 2px solid #f1f3f4;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bdc1c6;
+        }
+
+        /* Document Paper Styling */
+        #paper-container {
+            transform-origin: top center;
+            transition: transform 0.15s ease;
+        }
+
+        #editor {
+            width: var(--page-width);
+            min-height: var(--page-min-height);
+            padding-top: var(--page-padding-top);
+            padding-bottom: var(--page-padding-bottom);
+            padding-left: var(--page-padding-left);
+            padding-right: var(--page-padding-right);
+            background-color: #ffffff;
+            box-shadow: 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+            border: 1px solid #e0e0e0;
+            outline: none;
+            user-select: text;
+            font-family: 'Sarabun', sans-serif;
+            font-size: 16px;
+            line-height: var(--line-spacing);
+            color: #202124;
+            word-wrap: break-word;
+            position: relative;
+            /* Visual multi-page guide every 297mm */
+            background-image: linear-gradient(to bottom, transparent calc(297mm - 1px), #e8eaed calc(297mm - 1px), #e8eaed 297mm);
+            background-size: 100% 297mm;
+        }
+
+        /* Typography inside Editor */
+        #editor h1 {
+            font-size: 2em;
+            font-weight: 700;
+            margin-top: 0.75em;
+            margin-bottom: 0.35em;
+            color: #111827;
+            line-height: 1.25;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 0.2em;
+        }
+        #editor h2 {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-top: 0.75em;
+            margin-bottom: 0.3em;
+            color: #1f2937;
+            line-height: 1.3;
+        }
+        #editor h3 {
+            font-size: 1.25em;
+            font-weight: 600;
+            margin-top: 0.6em;
+            margin-bottom: 0.25em;
+            color: #374151;
+        }
+        #editor p {
+            margin-bottom: 0.6em;
+        }
+        #editor ul {
+            list-style-type: disc;
+            padding-left: 2rem;
+            margin-bottom: 0.75em;
+        }
+        #editor ol {
+            list-style-type: decimal;
+            padding-left: 2rem;
+            margin-bottom: 0.75em;
+        }
+        #editor blockquote {
+            border-left: 4px solid #1a73e8;
+            background: #f8fafc;
+            padding: 0.75rem 1rem;
+            margin: 0.75rem 0;
+            color: #334155;
+            font-style: italic;
+        }
+        #editor table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        #editor table td, #editor table th {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            min-width: 40px;
+        }
+        #editor table th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+        }
+        #editor hr {
+            border: none;
+            border-top: 2px solid #cbd5e1;
+            margin: 1.5rem 0;
+        }
+        #editor a {
+            color: #1a73e8;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        #editor img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+        /* Visual Page Break inside Editor */
+        .docs-page-break {
+            page-break-after: always;
+            break-after: page;
+            border-top: 2px dashed #94a3b8;
+            margin: 28px -25.4mm;
+            position: relative;
+            height: 16px;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+        .docs-page-break::after {
+            content: "แบ่งหน้า (Page Break) / สไลด์ถัดไป";
+            font-size: 11px;
+            color: #64748b;
+            background: #f1f5f9;
+            padding: 2px 10px;
+            border-radius: 999px;
+            border: 1px solid #cbd5e1;
+            font-family: 'Inter', 'Sarabun', sans-serif;
+        }
+
+        /* Checklist item styling */
+        .docs-checklist-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .docs-checklist-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #1a73e8;
+            cursor: pointer;
+        }
+
+        /* Toolbar button active/hover state */
+        .tb-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            color: #444746;
+            transition: background-color 0.12s;
+        }
+        .tb-btn:hover {
+            background-color: rgba(68, 71, 70, 0.08);
+        }
+        .tb-btn.active {
+            background-color: #d3e3fd;
+            color: #041e49;
+        }
+
+        /* Ruler styling */
+        #ruler-bar {
+            background: #f9fbfd;
+            border-bottom: 1px solid #e1e3e1;
+            height: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+        .ruler-ticks {
+            width: 210mm;
+            height: 100%;
+            margin: 0 auto;
+            position: relative;
+            background-image: repeating-linear-gradient(to right, #9aa0a6 0, #9aa0a6 1px, transparent 1px, transparent 37.795px),
+                              repeating-linear-gradient(to right, #bdc1c6 0, #bdc1c6 1px, transparent 1px, transparent 7.559px);
+            background-size: 100% 10px, 100% 5px;
+            background-position: bottom;
+            background-repeat: repeat-x;
+        }
+
+        /* Laser Pointer in Presentation Mode */
+        #laser-dot {
+            position: fixed;
+            width: 16px;
+            height: 16px;
+            background: radial-gradient(circle, #ff1744 25%, rgba(255,23,68,0.6) 60%, transparent 100%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            box-shadow: 0 0 14px 4px rgba(255, 23, 68, 0.85);
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        /* Print Media Styles */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #editor, #editor * {
+                visibility: visible;
+            }
+            #editor {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 15mm !important;
+                box-shadow: none !important;
+                border: none !important;
+                background-image: none !important;
+            }
+            .docs-page-break {
+                border: none !important;
+                background: transparent !important;
+                height: 0 !important;
+                margin: 0 !important;
+            }
+            .docs-page-break::after {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col select-none">
+
+    <!-- Hidden File Input for Opening Documents -->
+    <input type="file" id="file-input" class="hidden" accept=".docx,.odt,.txt,.html,.htm,.md,.doc" onchange="handleFileOpen(event)">
+    <!-- Hidden Image Input for Inserting Local Pictures -->
+    <input type="file" id="image-input" class="hidden" accept="image/*" onchange="handleImageUpload(event)">
+
+    <!-- ==================== 1. TOP HEADER & MENU BAR ==================== -->
+    <header class="bg-[#F9FBFD] px-3 pt-2 pb-1 flex items-center justify-between border-b border-transparent z-30">
+        <!-- Left: App Icon + Title + Top Menus -->
+        <div class="flex items-center gap-2">
+            <!-- Docs Clone Logo -->
+            <div onclick="showToast('Docs Clone v2.5 - พร้อมใช้งานทุกฟีเจอร์')" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" title="หน้าแรกของ Docs Clone">
+                <svg class="w-9 h-9" viewBox="0 0 48 48" fill="none">
+                    <path d="M28 4H12C9.79 4 8 5.79 8 8V40C8 42.21 9.79 44 12 44H36C38.21 44 40 42.21 40 40V16L28 4Z" fill="#4285F4"/>
+                    <path d="M28 4V16H40L28 4Z" fill="#A1C2FA"/>
+                    <path d="M16 24H32V27H16V24ZM16 30H32V33H16V30ZM16 36H26V39H16V36Z" fill="white"/>
+                </svg>
+            </div>
+
+            <div>
+                <!-- Document Title Row -->
+                <div class="flex items-center gap-1.5">
+                    <input id="doc-title" type="text" value="แผนพัฒนาซอฟต์แวร์และสถาปัตยกรรมระบบ (Docs Clone)" 
+                        class="text-[18px] font-medium text-gray-800 bg-transparent px-1.5 py-0.5 rounded hover:border-gray-400 focus:border-blue-600 focus:bg-white border border-transparent outline-none transition-all w-64 sm:w-80 md:w-96 truncate"
+                        oninput="scheduleAutoSave()" title="คลิกเพื่อเปลี่ยนชื่อเอกสาร">
+                    
+                    <button onclick="toggleStar(this)" class="tb-btn text-gray-500" title="ติดดาวเอกสาร">
+                        <span class="material-symbols-outlined text-[19px]">star</span>
+                    </button>
+                    
+                    <div id="save-status" class="flex items-center gap-1 text-xs text-gray-500 ml-1 px-2 py-0.5 rounded-full bg-gray-100" title="บันทึกอัตโนมัติในเบราว์เซอร์">
+                        <span class="material-symbols-outlined text-[16px] text-emerald-600">cloud_done</span>
+                        <span id="save-status-text" class="hidden sm:inline">บันทึกแล้วในเบราว์เซอร์</span>
+                    </div>
+                </div>
+
+                <!-- Menu Bar Row -->
+                <nav class="flex items-center gap-0.5 text-[13.5px] text-gray-700 mt-0.5 relative" id="menu-bar">
+                    <!-- ไฟล์ (File) -->
+                    <div class="relative group">
+                        <button onclick="toggleMenu('menu-file')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">ไฟล์</button>
+                        <div id="menu-file" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="newDocument()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-blue-600">note_add</span>เอกสารใหม่</span>
+                                <span class="text-xs text-gray-400">Alt+N</span>
+                            </button>
+                            <button onclick="loadSampleDocument()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-indigo-600">description</span>โหลดเอกสารตัวอย่าง
+                            </button>
+                            <button onclick="triggerFileOpen()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-amber-600">folder_open</span>เปิดไฟล์ (.docx, .odt, .txt...)</span>
+                                <span class="text-xs text-gray-400">Ctrl+O</span>
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <div class="px-4 py-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">ดาวน์โหลด / บันทึกเป็น</div>
+                            <button onclick="exportFile('docx')" class="w-full px-4 py-1.5 text-left hover:bg-blue-50 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-blue-700">article</span>Microsoft Word (.docx)</span>
+                                <span class="text-[11px] bg-blue-100 text-blue-800 px-1.5 rounded">แนะนำ</span>
+                            </button>
+                            <button onclick="exportFile('pdf')" class="w-full px-4 py-1.5 text-left hover:bg-red-50 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-red-600">picture_as_pdf</span>เอกสาร PDF (.pdf)
+                            </button>
+                            <button onclick="exportFile('odt')" class="w-full px-4 py-1.5 text-left hover:bg-emerald-50 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-emerald-600">draft</span>OpenDocument Text (.odt)
+                            </button>
+                            <button onclick="exportFile('doc')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-sky-700">description</span>Word 97-2003 (.doc)
+                            </button>
+                            <button onclick="exportFile('txt')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-gray-600">subject</span>ข้อความธรรมดา (.txt)
+                            </button>
+                            <button onclick="exportFile('html')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-orange-600">code</span>หน้าเว็บ (.html)
+                            </button>
+                            <button onclick="exportFile('md')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-purple-600">markdown</span>Markdown (.md)
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="openModal('page-setup-modal')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-gray-600">settings_overscan</span>ตั้งค่าหน้ากระดาษ...
+                            </button>
+                            <button onclick="window.print()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-gray-600">print</span>พิมพ์เอกสาร</span>
+                                <span class="text-xs text-gray-400">Ctrl+P</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- แก้ไข (Edit) -->
+                    <div class="relative">
+                        <button onclick="toggleMenu('menu-edit')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">แก้ไข</button>
+                        <div id="menu-edit" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="execCmd('undo')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">undo</span>เลิกทำ</span>
+                                <span class="text-xs text-gray-400">Ctrl+Z</span>
+                            </button>
+                            <button onclick="execCmd('redo')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">redo</span>ทำซ้ำ</span>
+                                <span class="text-xs text-gray-400">Ctrl+Y</span>
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="execCmd('selectAll')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">select_all</span>เลือกทั้งหมด</span>
+                                <span class="text-xs text-gray-400">Ctrl+A</span>
+                            </button>
+                            <button onclick="openModal('find-replace-modal')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">find_replace</span>ค้นหาและแทนที่...</span>
+                                <span class="text-xs text-gray-400">Ctrl+F</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ดู (View) -->
+                    <div class="relative">
+                        <button onclick="toggleMenu('menu-view')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">ดู</button>
+                        <div id="menu-view" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-60 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="startPresentation('slides')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5 font-medium text-blue-700">
+                                <span class="material-symbols-outlined">slideshow</span>โหมดนำเสนอสไลด์ (Present)
+                            </button>
+                            <button onclick="startPresentation('teleprompter')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">auto_stories</span>โหมดเลื่อนอ่าน (Teleprompter)
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="toggleOutlineSidebar()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">toc</span>แสดง/ซ่อน สารบัญเอกสาร
+                            </button>
+                            <button onclick="toggleRuler()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">straighten</span>แสดง/ซ่อน ไม้บรรทัด
+                            </button>
+                            <button onclick="toggleFullScreen()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">fullscreen</span>เต็มหน้าจอ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- แทรก (Insert) -->
+                    <div class="relative">
+                        <button onclick="toggleMenu('menu-insert')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">แทรก</button>
+                        <div id="menu-insert" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-60 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="triggerImageUpload()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-blue-600">image</span>รูปภาพจากเครื่องคอมพิวเตอร์
+                            </button>
+                            <button onclick="openModal('image-url-modal')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-indigo-600">add_photo_alternate</span>รูปภาพจาก URL
+                            </button>
+                            <button onclick="openModal('table-modal')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-emerald-600">table_chart</span>ตาราง (Table)...
+                            </button>
+                            <button onclick="openModal('link-modal')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-sky-600">link</span>ลิงก์ (Hyperlink)...
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="execCmd('insertHorizontalRule')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">horizontal_rule</span>เส้นคั่นแนวนอน
+                            </button>
+                            <button onclick="insertPageBreak()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">insert_page_break</span>ตัวแบ่งหน้า / แบ่งสไลด์
+                            </button>
+                            <button onclick="insertChecklist()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">checklist</span>รายการตรวจสอบ (Checklist)
+                            </button>
+                            <button onclick="insertDateTime()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">calendar_today</span>วันที่และเวลาปัจจุบัน
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- รูปแบบ (Format) -->
+                    <div class="relative">
+                        <button onclick="toggleMenu('menu-format')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">รูปแบบ</button>
+                        <div id="menu-format" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="execCmd('bold')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">format_bold</span>ตัวหนา</span>
+                                <span class="text-xs text-gray-400">Ctrl+B</span>
+                            </button>
+                            <button onclick="execCmd('italic')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">format_italic</span>ตัวเอียง</span>
+                                <span class="text-xs text-gray-400">Ctrl+I</span>
+                            </button>
+                            <button onclick="execCmd('underline')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined">format_underlined</span>ขีดเส้นใต้</span>
+                                <span class="text-xs text-gray-400">Ctrl+U</span>
+                            </button>
+                            <button onclick="execCmd('strikeThrough')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">strikethrough_s</span>ขีดฆ่า
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="applyHeading('H1')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">format_h1</span>หัวเรื่อง 1 (สไลด์ใหม่)
+                            </button>
+                            <button onclick="applyHeading('H2')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">format_h2</span>หัวเรื่อง 2 (สไลด์ใหม่)
+                            </button>
+                            <button onclick="applyHeading('H3')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined">format_h3</span>หัวเรื่อง 3
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="execCmd('removeFormat')" class="w-full px-4 py-1.5 text-left hover:bg-gray-100 flex items-center gap-2.5 text-red-600">
+                                <span class="material-symbols-outlined">format_clear</span>ล้างการจัดรูปแบบ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- เครื่องมือ (Tools) -->
+                    <div class="relative">
+                        <button onclick="toggleMenu('menu-tools')" class="px-2 py-0.5 rounded hover:bg-gray-200/70 transition-colors">เครื่องมือ</button>
+                        <div id="menu-tools" class="menu-dropdown hidden absolute left-0 top-full mt-1 w-60 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50 text-sm">
+                            <button onclick="openWordCountModal()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-blue-600">analytics</span>นับจำนวนคำและสถิติ</span>
+                                <span class="text-xs text-gray-400">Ctrl+Shift+C</span>
+                            </button>
+                            <button onclick="toggleVoiceTyping()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-red-500">mic</span>พิมพ์ด้วยเสียง (ภาษาไทย)
+                            </button>
+                            <button onclick="copyAllDocumentText()" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2.5">
+                                <span class="material-symbols-outlined text-gray-600">content_copy</span>คัดลอกเนื้อหาทั้งหมด
+                            </button>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Right: Quick Open, Save Dropdown, and PRESENT Button -->
+        <div class="flex items-center gap-2">
+            <!-- Quick Open Button -->
+            <button onclick="triggerFileOpen()" class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-gray-700 hover:bg-gray-200/80 border border-gray-300 transition-all" title="เปิดไฟล์จากคอมพิวเตอร์ (.docx, .odt, .txt, .html)">
+                <span class="material-symbols-outlined text-[18px]">folder_open</span>
+                <span>เปิดไฟล์</span>
+            </button>
+
+            <!-- PRESENT BUTTON (ปุ่มนำเสนอ) -->
+            <button onclick="startPresentation('slides')" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow transition-all" title="เข้าสู่โหมดนำเสนอทันที (แบ่งสไลด์อัตโนมัติ / เลื่อนอ่าน)">
+                <span class="material-symbols-outlined text-[19px]">present_to_all</span>
+                <span>นำเสนอ</span>
+            </button>
+
+            <!-- Export / Save Button with Quick Menu -->
+            <div class="relative">
+                <button onclick="toggleMenu('menu-quick-export')" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#C2E7FF] hover:bg-[#b3dffc] text-[#001D35] transition-all shadow-sm">
+                    <span class="material-symbols-outlined text-[18px]">download</span>
+                    <span>บันทึกไฟล์</span>
+                    <span class="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+                </button>
+                <div id="menu-quick-export" class="menu-dropdown hidden absolute right-0 top-full mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50 text-sm">
+                    <div class="px-4 py-1 text-xs font-semibold text-gray-400">เลือกรูปแบบไฟล์ที่ต้องการบันทึก</div>
+                    <button onclick="exportFile('docx')" class="w-full px-4 py-2 text-left hover:bg-blue-50 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-blue-600">article</span>Word (.docx)</span>
+                        <span class="text-[11px] font-medium text-blue-600">.docx</span>
+                    </button>
+                    <button onclick="exportFile('pdf')" class="w-full px-4 py-2 text-left hover:bg-red-50 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-red-600">picture_as_pdf</span>PDF Document (.pdf)</span>
+                        <span class="text-[11px] font-medium text-red-600">.pdf</span>
+                    </button>
+                    <button onclick="exportFile('odt')" class="w-full px-4 py-2 text-left hover:bg-emerald-50 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-emerald-600">draft</span>OpenDocument (.odt)</span>
+                        <span class="text-[11px] font-medium text-emerald-600">.odt</span>
+                    </button>
+                    <button onclick="exportFile('doc')" class="w-full px-4 py-2 text-left hover:bg-sky-50 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sky-700">description</span>Word 97-2003 (.doc)</span>
+                        <span class="text-[11px] font-medium text-sky-700">.doc</span>
+                    </button>
+                    <button onclick="exportFile('txt')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-gray-600">subject</span>Plain Text (.txt)</span>
+                        <span class="text-[11px] font-medium text-gray-500">.txt</span>
+                    </button>
+                    <button onclick="exportFile('html')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-orange-600">code</span>Web Page (.html)</span>
+                        <span class="text-[11px] font-medium text-orange-600">.html</span>
+                    </button>
+                    <button onclick="exportFile('md')" class="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="material-symbols-outlined text-purple-600">markdown</span>Markdown (.md)</span>
+                        <span class="text-[11px] font-medium text-purple-600">.md</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== 2. FORMATTING TOOLBAR (Google Docs Pill Style) ==================== -->
+    <div class="px-3 pb-2 bg-[#F9FBFD] z-20">
+        <div class="bg-[#EDF2FA] rounded-full px-3 py-1 flex items-center gap-0.5 overflow-x-auto no-scrollbar shadow-inner border border-gray-200/60">
+            
+            <!-- Undo / Redo / Print -->
+            <button onclick="execCmd('undo')" class="tb-btn" title="เลิกทำ (Ctrl+Z)"><span class="material-symbols-outlined">undo</span></button>
+            <button onclick="execCmd('redo')" class="tb-btn" title="ทำซ้ำ (Ctrl+Y)"><span class="material-symbols-outlined">redo</span></button>
+            <button onclick="window.print()" class="tb-btn" title="พิมพ์ (Ctrl+P)"><span class="material-symbols-outlined">print</span></button>
+            
+            <!-- Zoom Selector -->
+            <select id="zoom-select" onchange="setZoom(this.value)" class="bg-transparent text-xs font-medium text-gray-700 px-1.5 py-1 rounded hover:bg-gray-200/70 outline-none cursor-pointer" title="ย่อ/ขยาย">
+                <option value="0.75">75%</option>
+                <option value="0.9">90%</option>
+                <option value="1" selected>100%</option>
+                <option value="1.25">125%</option>
+                <option value="1.5">150%</option>
+            </select>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Heading / Style Selector -->
+            <select id="heading-select" onchange="applyHeading(this.value)" class="bg-transparent text-xs font-medium text-gray-700 px-2 py-1 rounded hover:bg-gray-200/70 outline-none cursor-pointer w-28" title="สไตล์ข้อความ">
+                <option value="P">ข้อความปกติ</option>
+                <option value="H1">หัวเรื่อง 1</option>
+                <option value="H2">หัวเรื่อง 2</option>
+                <option value="H3">หัวเรื่อง 3</option>
+                <option value="BLOCKQUOTE">ข้อความอ้างอิง</option>
+            </select>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Font Family Selector -->
+            <select id="font-family-select" onchange="applyFontFamily(this.value)" class="bg-transparent text-xs font-medium text-gray-700 px-2 py-1 rounded hover:bg-gray-200/70 outline-none cursor-pointer w-28" title="แบบอักษร">
+                <option value="Sarabun" selected>Sarabun</option>
+                <option value="Prompt">Prompt</option>
+                <option value="Kanit">Kanit</option>
+                <option value="Charm">Charm</option>
+                <option value="Inter">Inter</option>
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+            </select>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Font Size Controls -->
+            <div class="flex items-center">
+                <button onclick="changeFontSize(-2)" class="tb-btn !w-6 !h-6" title="ลดขนาดฟอนต์"><span class="material-symbols-outlined !text-[16px]">remove</span></button>
+                <input id="font-size-input" type="text" value="16" onchange="setExplicitFontSize(this.value)" class="w-8 text-center text-xs font-medium bg-white border border-gray-300 rounded py-0.5 mx-0.5 outline-none" title="ขนาดฟอนต์ (px)">
+                <button onclick="changeFontSize(2)" class="tb-btn !w-6 !h-6" title="เพิ่มขนาดฟอนต์"><span class="material-symbols-outlined !text-[16px]">add</span></button>
+            </div>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Text Formatting (B, I, U, S) -->
+            <button onclick="execCmd('bold')" class="tb-btn" title="ตัวหนา (Ctrl+B)"><span class="material-symbols-outlined">format_bold</span></button>
+            <button onclick="execCmd('italic')" class="tb-btn" title="ตัวเอียง (Ctrl+I)"><span class="material-symbols-outlined">format_italic</span></button>
+            <button onclick="execCmd('underline')" class="tb-btn" title="ขีดเส้นใต้ (Ctrl+U)"><span class="material-symbols-outlined">format_underlined</span></button>
+            <button onclick="execCmd('strikeThrough')" class="tb-btn" title="ขีดฆ่า"><span class="material-symbols-outlined">strikethrough_s</span></button>
+
+            <!-- Text Color & Highlight Color -->
+            <label class="tb-btn relative cursor-pointer" title="สีข้อความ">
+                <span class="material-symbols-outlined">format_color_text</span>
+                <input type="color" value="#202124" onchange="execCmd('foreColor', this.value)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+            </label>
+            <label class="tb-btn relative cursor-pointer" title="สีไฮไลต์พื้นหลังข้อความ">
+                <span class="material-symbols-outlined">ink_highlighter</span>
+                <input type="color" value="#fef08a" onchange="execCmd('hiliteColor', this.value)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+            </label>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Insert Link, Image, Table, Page Break -->
+            <button onclick="openModal('link-modal')" class="tb-btn" title="แทรกลิงก์"><span class="material-symbols-outlined">link</span></button>
+            <button onclick="triggerImageUpload()" class="tb-btn" title="แทรกรูปภาพจากเครื่อง"><span class="material-symbols-outlined">image</span></button>
+            <button onclick="openModal('table-modal')" class="tb-btn" title="แทรกตาราง"><span class="material-symbols-outlined">table_chart</span></button>
+            <button onclick="insertPageBreak()" class="tb-btn" title="แทรกตัวแบ่งหน้า / สไลด์ใหม่"><span class="material-symbols-outlined">insert_page_break</span></button>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Alignment -->
+            <button onclick="execCmd('justifyLeft')" class="tb-btn" title="ชิดซ้าย"><span class="material-symbols-outlined">format_align_left</span></button>
+            <button onclick="execCmd('justifyCenter')" class="tb-btn" title="กึ่งกลาง"><span class="material-symbols-outlined">format_align_center</span></button>
+            <button onclick="execCmd('justifyRight')" class="tb-btn" title="ชิดขวา"><span class="material-symbols-outlined">format_align_right</span></button>
+            <button onclick="execCmd('justifyFull')" class="tb-btn" title="กระจายเต็มแนว"><span class="material-symbols-outlined">format_align_justify</span></button>
+
+            <!-- Line Spacing -->
+            <select onchange="setLineSpacing(this.value)" class="bg-transparent text-xs font-medium text-gray-700 px-1 py-1 rounded hover:bg-gray-200/70 outline-none cursor-pointer" title="ระยะห่างบรรทัด">
+                <option value="1.15">1.15</option>
+                <option value="1.5" selected>1.5</option>
+                <option value="1.75">1.75</option>
+                <option value="2.0">2.0</option>
+            </select>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Lists & Indentation -->
+            <button onclick="execCmd('insertUnorderedList')" class="tb-btn" title="รายการแบบจุด"><span class="material-symbols-outlined">format_list_bulleted</span></button>
+            <button onclick="execCmd('insertOrderedList')" class="tb-btn" title="รายการแบบตัวเลข"><span class="material-symbols-outlined">format_list_numbered</span></button>
+            <button onclick="insertChecklist()" class="tb-btn" title="แทรกรายการตรวจสอบ"><span class="material-symbols-outlined">checklist</span></button>
+            <button onclick="execCmd('outdent')" class="tb-btn" title="ลดระยะเยื้อง"><span class="material-symbols-outlined">format_indent_decrease</span></button>
+            <button onclick="execCmd('indent')" class="tb-btn" title="เพิ่มระยะเยื้อง"><span class="material-symbols-outlined">format_indent_increase</span></button>
+
+            <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+            <!-- Voice Typing & Clear Format -->
+            <button id="voice-btn" onclick="toggleVoiceTyping()" class="tb-btn" title="พิมพ์ด้วยเสียงภาษาไทย"><span class="material-symbols-outlined">mic</span></button>
+            <button onclick="execCmd('removeFormat')" class="tb-btn" title="ล้างการจัดรูปแบบทั้งหมด"><span class="material-symbols-outlined">format_clear</span></button>
+        </div>
+    </div>
+
+    <!-- ==================== 3. HORIZONTAL RULER ==================== -->
+    <div id="ruler-bar" class="flex items-center justify-center select-none">
+        <div class="ruler-ticks flex items-start justify-between px-4 text-[9px] text-gray-500 font-mono">
+            <span>0</span><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>12</span><span>14</span><span>16</span><span>18</span><span>20 cm</span>
+        </div>
+    </div>
+
+    <!-- ==================== 4. MAIN WORKSPACE (SIDEBAR + PAPER CANVAS) ==================== -->
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Left Document Outline Sidebar (สารบัญเอกสารอัตโนมัติ) -->
+        <aside id="outline-sidebar" class="w-64 bg-[#F9FBFD] border-r border-gray-200 flex flex-col shrink-0 transition-all duration-200">
+            <div class="px-4 py-3 flex items-center justify-between border-b border-gray-200/70">
+                <div class="flex items-center gap-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <span class="material-symbols-outlined text-[18px] text-blue-600">toc</span>
+                    <span>สารบัญเอกสาร / สไลด์</span>
+                </div>
+                <button onclick="toggleOutlineSidebar()" class="tb-btn !w-6 !h-6" title="ซ่อนสารบัญ">
+                    <span class="material-symbols-outlined !text-[16px]">close</span>
+                </button>
+            </div>
+            <div class="px-4 py-2 bg-blue-50/60 border-b border-blue-100 text-[11px] text-blue-800">
+                💡 หัวเรื่อง <b>H1, H2</b> หรือ <b>ตัวแบ่งหน้า</b> จะถูกแบ่งเป็นสไลด์อัตโนมัติเมื่อกดปุ่ม <b>นำเสนอ</b>
+            </div>
+            <div id="outline-list" class="flex-1 overflow-y-auto p-2 space-y-0.5 text-sm">
+                <!-- Populated dynamically from H1, H2, H3 in editor -->
+            </div>
+        </aside>
+
+        <!-- Floating Button to Re-open Outline when hidden -->
+        <button id="open-outline-btn" onclick="toggleOutlineSidebar()" class="hidden absolute left-3 top-3 z-20 bg-white shadow-md border border-gray-200 rounded-full p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-all" title="เปิดสารบัญเอกสาร">
+            <span class="material-symbols-outlined">toc</span>
+        </button>
+
+        <!-- Scrollable Document Canvas Area -->
+        <main id="canvas-scroll" class="flex-1 overflow-y-auto overflow-x-auto py-6 px-4 flex justify-center bg-[#F9FBFD]" onclick="focusEditorIfOutside(event)">
+            <div id="paper-container" class="pb-16">
+                <!-- Editable Paper Sheet -->
+                <div id="editor" contenteditable="true" spellcheck="false" oninput="onEditorInput()"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== 5. BOTTOM STATUS BAR ==================== -->
+    <footer class="bg-white border-t border-gray-200 px-4 py-1.5 flex items-center justify-between text-xs text-gray-600 z-20">
+        <div class="flex items-center gap-4">
+            <span id="stat-pages" class="font-medium text-gray-700">หน้า: 1</span>
+            <span id="stat-words">จำนวนคำ: 0 คำ</span>
+            <span id="stat-chars">ตัวอักษร: 0 ตัว</span>
+            <span id="stat-slides" class="text-indigo-600 font-medium">สไลด์พร้อมนำเสนอ: 1 สไลด์</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="hidden sm:inline text-gray-400">รองรับไฟล์: .docx, .pdf, .odt, .doc, .txt, .html, .md</span>
+            <button onclick="startPresentation('slides')" class="text-indigo-600 hover:underline font-medium flex items-center gap-1">
+                <span class="material-symbols-outlined !text-[15px]">play_circle</span>เริ่มนำเสนอ
+            </button>
+        </div>
+    </footer>
+
+    <!-- ==================== 6. PRESENTATION OVERLAY (โหมดนำเสนอเต็มรูปแบบ) ==================== -->
+    <div id="presentation-overlay" class="hidden fixed inset-0 bg-slate-950 text-white z-50 flex flex-col select-none">
+        
+        <!-- Laser Pointer Red Dot -->
+        <div id="laser-dot"></div>
+
+        <!-- Presentation Top Header Bar -->
+        <div class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-6 py-3 flex items-center justify-between z-10">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-indigo-400 text-2xl">present_to_all</span>
+                <div>
+                    <h2 id="pres-doc-title" class="font-semibold text-sm sm:text-base text-slate-100 truncate max-w-md">Docs Clone Presentation</h2>
+                    <p class="text-[11px] text-slate-400">กดลูกศร ⬅️ ➡️ เพื่อเปลี่ยนสไลด์ | กด L เพื่อเปิดเลเซอร์ | กด Esc เพื่อออก</p>
+                </div>
+            </div>
+
+            <!-- Mode Switcher & Controls -->
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="bg-slate-800 p-1 rounded-lg flex items-center text-xs">
+                    <button id="pres-mode-slides" onclick="switchPresMode('slides')" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white font-medium transition-all flex items-center gap-1">
+                        <span class="material-symbols-outlined !text-[16px]">slideshow</span>สไลด์ (Slides)
+                    </button>
+                    <button id="pres-mode-scroll" onclick="switchPresMode('teleprompter')" class="px-3 py-1.5 rounded-md text-slate-300 hover:text-white transition-all flex items-center gap-1">
+                        <span class="material-symbols-outlined !text-[16px]">auto_stories</span>เลื่อนอ่าน (Teleprompter)
+                    </button>
+                </div>
+
+                <!-- Laser Pointer Toggle -->
+                <button id="laser-toggle-btn" onclick="toggleLaserPointer()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium flex items-center gap-1.5 border border-slate-700 transition-all" title="เลเซอร์พอยเตอร์ (ปุ่มลัด L)">
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                    <span class="hidden sm:inline">เลเซอร์พอยเตอร์</span>
+                </button>
+
+                <!-- Fullscreen Toggle -->
+                <button onclick="toggleFullScreen()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300" title="เต็มหน้าจอ">
+                    <span class="material-symbols-outlined">fullscreen</span>
+                </button>
+
+                <!-- Exit Presentation -->
+                <button onclick="closePresentation()" class="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex items-center gap-1 shadow">
+                    <span class="material-symbols-outlined !text-[16px]">close</span>
+                    <span>จบการนำเสนอ</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mode A: Slide Deck Viewport -->
+        <div id="pres-slides-container" class="flex-1 flex items-center justify-center p-4 sm:p-10 overflow-hidden relative">
+            <!-- Previous Slide Button -->
+            <button onclick="changeSlide(-1)" class="absolute left-4 z-20 w-12 h-12 rounded-full bg-slate-800/80 hover:bg-indigo-600 text-white flex items-center justify-center shadow-lg transition-all">
+                <span class="material-symbols-outlined text-2xl">chevron_left</span>
+            </button>
+
+            <!-- Active Slide Card -->
+            <div id="pres-slide-card" class="w-full max-w-5xl h-full max-h-[78vh] bg-white text-slate-900 rounded-2xl shadow-2xl p-8 sm:p-14 overflow-y-auto flex flex-col justify-between border border-slate-200 transition-all duration-200">
+                <div id="pres-slide-content" class="prose max-w-none text-lg sm:text-2xl leading-relaxed" style="font-family: 'Sarabun', sans-serif;">
+                    <!-- Slide HTML injected here -->
+                </div>
+                <div class="pt-6 mt-6 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                    <span id="pres-slide-footer-title">Docs Clone Presentation</span>
+                    <span id="pres-slide-number" class="font-semibold text-indigo-600">1 / 1</span>
+                </div>
+            </div>
+
+            <!-- Next Slide Button -->
+            <button onclick="changeSlide(1)" class="absolute right-4 z-20 w-12 h-12 rounded-full bg-slate-800/80 hover:bg-indigo-600 text-white flex items-center justify-center shadow-lg transition-all">
+                <span class="material-symbols-outlined text-2xl">chevron_right</span>
+            </button>
+        </div>
+
+        <!-- Mode B: Teleprompter / Document Scroll Viewport -->
+        <div id="pres-scroll-container" class="hidden flex-1 flex flex-col overflow-hidden">
+            <!-- Teleprompter Control Bar -->
+            <div class="bg-slate-900/60 border-b border-slate-800 px-6 py-2 flex items-center justify-center gap-6 text-xs">
+                <button id="tele-play-btn" onclick="toggleTeleprompterScroll()" class="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1">
+                    <span class="material-symbols-outlined !text-[16px]" id="tele-play-icon">play_arrow</span>
+                    <span id="tele-play-text">เริ่มเลื่อนอัตโนมัติ</span>
+                </button>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400">ความเร็วการเลื่อน:</span>
+                    <input id="tele-speed" type="range" min="1" max="10" value="3" class="w-28 accent-indigo-500">
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400">ขนาดตัวอักษร:</span>
+                    <button onclick="adjustTeleFontSize(-2)" class="px-2 py-0.5 bg-slate-800 rounded hover:bg-slate-700">-</button>
+                    <span id="tele-font-label">24px</span>
+                    <button onclick="adjustTeleFontSize(2)" class="px-2 py-0.5 bg-slate-800 rounded hover:bg-slate-700">+</button>
+                </div>
+            </div>
+
+            <div id="teleprompter-scroll-box" class="flex-1 overflow-y-auto px-6 py-12 flex justify-center">
+                <div id="teleprompter-content" class="max-w-4xl w-full bg-white text-slate-900 rounded-2xl shadow-xl p-10 sm:p-16 leading-relaxed h-fit" style="font-family: 'Sarabun', sans-serif; font-size: 24px;">
+                    <!-- Full document content injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide Progress Dots Bar -->
+        <div id="pres-bottom-bar" class="bg-slate-900 border-t border-slate-800 px-6 py-2.5 flex items-center justify-between text-xs text-slate-400">
+            <div id="pres-slide-dots" class="flex items-center gap-1.5 overflow-x-auto max-w-md py-1"></div>
+            <div class="flex items-center gap-2">
+                <button onclick="changeSlide(-1)" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">ก่อนหน้า</button>
+                <button onclick="changeSlide(1)" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium">ถัดไป</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 7. MODALS (TABLE, LINK, IMAGE URL, FIND/REPLACE, PAGE SETUP, STATS) ==================== -->
+
+    <!-- Modal Backdrop Wrapper -->
+    <div id="modal-backdrop" class="hidden fixed inset-0 bg-black/40 backdrop-blur-[1px] z-50 flex items-center justify-center p-4">
+        
+        <!-- Insert Table Modal -->
+        <div id="table-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-emerald-600">table_chart</span>แทรกตาราง (Insert Table)
+            </h3>
+            <div class="grid grid-cols-2 gap-4 mb-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">จำนวนแถว (Rows)</label>
+                    <input id="table-rows" type="number" min="1" max="30" value="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">จำนวนคอลัมน์ (Columns)</label>
+                    <input id="table-cols" type="number" min="1" max="12" value="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeAllModals()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">ยกเลิก</button>
+                <button onclick="confirmInsertTable()" class="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">แทรกตาราง</button>
+            </div>
+        </div>
+
+        <!-- Insert Link Modal -->
+        <div id="link-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-blue-600">link</span>แทรกลิงก์เชื่อมโยง
+            </h3>
+            <div class="space-y-3 mb-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">ข้อความที่แสดง</label>
+                    <input id="link-text" type="text" placeholder="เช่น เว็บไซต์มหาวิทยาลัยเกษตรศาสตร์" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">URL ปลายทาง</label>
+                    <input id="link-url" type="url" value="https://" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeAllModals()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">ยกเลิก</button>
+                <button onclick="confirmInsertLink()" class="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">แทรกลิงก์</button>
+            </div>
+        </div>
+
+        <!-- Insert Image by URL Modal -->
+        <div id="image-url-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-indigo-600">add_photo_alternate</span>แทรกรูปภาพจาก URL
+            </h3>
+            <div class="mb-5">
+                <label class="block text-xs font-medium text-gray-600 mb-1">ลิงก์รูปภาพ (Image URL)</label>
+                <input id="img-url-input" type="url" placeholder="https://placehold.co/600x300/e2e8f0/1e293b?text=Docs+Clone" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeAllModals()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">ยกเลิก</button>
+                <button onclick="confirmInsertImageUrl()" class="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">แทรกรูปภาพ</button>
+            </div>
+        </div>
+
+        <!-- Find and Replace Modal -->
+        <div id="find-replace-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-blue-600">find_replace</span>ค้นหาและแทนที่
+            </h3>
+            <div class="space-y-3 mb-5">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">คำที่ต้องการค้นหา</label>
+                    <input id="find-input" type="text" placeholder="พิมพ์คำค้นหา..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">แทนที่ด้วย</label>
+                    <input id="replace-input" type="text" placeholder="พิมพ์คำที่ต้องการแทนที่..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-600">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeAllModals()" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100">ปิด</button>
+                <button onclick="performFindReplace()" class="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">แทนที่ทั้งหมด</button>
+            </div>
+        </div>
+
+        <!-- Page Setup Modal -->
+        <div id="page-setup-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-gray-700">settings_overscan</span>ตั้งค่าหน้ากระดาษ (Page Setup)
+            </h3>
+            <div class="space-y-4 mb-5 text-sm">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">การวางแนวกระดาษ (Orientation)</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="orient-portrait" onclick="setPageOrientation('portrait')" class="py-2 px-3 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium flex items-center justify-center gap-1.5">
+                            <span class="material-symbols-outlined">crop_portrait</span>แนวตั้ง (Portrait)
+                        </button>
+                        <button id="orient-landscape" onclick="setPageOrientation('landscape')" class="py-2 px-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">
+                            <span class="material-symbols-outlined">crop_landscape</span>แนวนอน (Landscape)
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">ระยะขอบกระดาษ (Margins)</label>
+                    <select id="margin-select" onchange="setPageMargins(this.value)" class="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none">
+                        <option value="25.4mm" selected>ปกติ (2.54 ซม. / 1 นิ้ว)</option>
+                        <option value="12.7mm">แคบ (1.27 ซม. / 0.5 นิ้ว)</option>
+                        <option value="35mm">กว้าง (3.5 ซม.)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="closeAllModals()" class="px-5 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">ตกลง</button>
+            </div>
+        </div>
+
+        <!-- Word Count Modal -->
+        <div id="word-count-modal" class="modal-box hidden bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-blue-600">analytics</span>สถิติเอกสาร (Word Count)
+            </h3>
+            <div class="space-y-2.5 text-sm mb-5 divide-y divide-gray-100">
+                <div class="flex justify-between pt-2"><span class="text-gray-600">จำนวนหน้าโดยประมาณ</span><span id="modal-stat-pages" class="font-semibold">1</span></div>
+                <div class="flex justify-between pt-2"><span class="text-gray-600">จำนวนคำ (Words)</span><span id="modal-stat-words" class="font-semibold">0</span></div>
+                <div class="flex justify-between pt-2"><span class="text-gray-600">ตัวอักษรทั้งหมด</span><span id="modal-stat-chars" class="font-semibold">0</span></div>
+                <div class="flex justify-between pt-2"><span class="text-gray-600">ตัวอักษร (ไม่รวมช่องว่าง)</span><span id="modal-stat-chars-nospace" class="font-semibold">0</span></div>
+                <div class="flex justify-between pt-2"><span class="text-gray-600">จำนวนสไลด์นำเสนอ</span><span id="modal-stat-slides" class="font-semibold text-indigo-600">1</span></div>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="closeAllModals()" class="px-5 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">ปิด</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-12 right-6 bg-gray-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-xl opacity-0 pointer-events-none transition-all duration-300 z-50 flex items-center gap-2">
+        <span class="material-symbols-outlined text-emerald-400 !text-[18px]">check_circle</span>
+        <span id="toast-message">ดำเนินการสำเร็จ</span>
+    </div>
+
+    <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+    <script>
+        const editor = document.getElementById('editor');
+        const docTitleInput = document.getElementById('doc-title');
+        let currentFontSize = 16;
+        let autoSaveTimer = null;
+
+        // Presentation State
+        let slidesData = [];
+        let currentSlideIndex = 0;
+        let laserActive = false;
+        let teleScrollInterval = null;
+        let teleFontSize = 24;
+
+        // Speech Recognition State
+        let recognition = null;
+        let isRecording = false;
+
+        // Default Rich Sample Document
+        const SAMPLE_DOCUMENT_HTML = `
+            <h1>1. ภาพรวมโครงการ Docs Clone (Project Overview)</h1>
+            <p>ยินดีต้อนรับสู่ <b>Docs Clone</b> เว็บแอปพลิเคชันจัดการเอกสารแบบครบวงจรที่จำลองประสบการณ์การใช้งาน <i>Google Docs</i> ทุกประการ รองรับการพิมพ์เอกสารทางวิชาการ รายงาน และการนำเสนอในคลิกเดียว</p>
+            <ul>
+                <li><b>แก้ไขเอกสารแบบ Rich Text:</b> ปรับแต่งฟอนต์ สี ขนาด การจัดหน้า ตาราง และรายการตรวจสอบ</li>
+                <li><b>เปิดและบันทึกไฟล์ข้ามฟอร์แมต:</b> รองรับทั้ง <code>.docx</code>, <code>.pdf</code>, <code>.odt</code> (OpenDocument), <code>.doc</code>, <code>.txt</code>, <code>.html</code> และ <code>.md</code></li>
+                <li><b>โหมดนำเสนอทันที (Instant Presentation):</b> แปลงหัวข้อเอกสารเป็นสไลด์โชว์พร้อมเลเซอร์พอยเตอร์ หรือโหมด Teleprompter</li>
+            </ul>
+
+            <h2>2. ตารางเปรียบเทียบการรองรับไฟล์ (Supported Formats)</h2>
+            <p>คุณสามารถทดสอบกดเมนู <b>ไฟล์ - ดาวน์โหลด</b> หรือปุ่ม <b>บันทึกไฟล์</b> มุมขวาบนเพื่อส่งออกเอกสารเป็นฟอร์แมตต่างๆ ได้ทันที:</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>นามสกุลไฟล์</th>
+                        <th>ประเภทเอกสาร</th>
+                        <th>ความสามารถในการเปิด/บันทึก</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><b>.docx</b></td>
+                        <td>Microsoft Word (OOXML)</td>
+                        <td>เปิดอ่านและส่งออกไฟล์ Word มาตรฐาน</td>
+                    </tr>
+                    <tr>
+                        <td><b>.odt</b></td>
+                        <td>OpenDocument Text (LibreOffice)</td>
+                        <td>เปิดอ่านและสร้างแพ็กเกจ XML มาตรฐาน OASIS</td>
+                    </tr>
+                    <tr>
+                        <td><b>.pdf</b></td>
+                        <td>Portable Document Format</td>
+                        <td>สร้างไฟล์ PDF พร้อมแบ่งหน้ากระดาษ A4</td>
+                    </tr>
+                    <tr>
+                        <td><b>.doc / .txt / .md</b></td>
+                        <td>Word รุ่นเก่า / ข้อความ / Markdown</td>
+                        <td>รองรับการนำเข้าและส่งออกครบถ้วน</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="docs-page-break" contenteditable="false"></div>
+
+            <h1>3. การใช้งานโหมดนำเสนอ (Presentation Mode)</h1>
+            <p>เมื่อกดปุ่ม <b>"นำเสนอ"</b> สีม่วงที่มุมขวาบน ระบบจะวิเคราะห์โครงสร้างเอกสารและแยกสไลด์ให้อัตโนมัติโดยยึดจาก:</p>
+            <ol>
+                <li>หัวเรื่องระดับ 1 (<b>Heading 1</b>) และหัวเรื่องระดับ 2 (<b>Heading 2</b>)</li>
+                <li>เส้นคั่นแบ่งหน้ากระดาษ (<b>Page Break</b> หรือเส้นคั่นแนวนอน)</li>
+            </ol>
+            <blockquote>
+                "เขียนเอกสารเสร็จปุ๊บ กดปุ่มนำเสนอได้ทันทีโดยไม่ต้องเสียเวลาทำสไลด์ซ้ำซ้อน พร้อมเลเซอร์พอยเตอร์ในตัว"
+            </blockquote>
+
+            <h2>4. รายการตรวจสอบก่อนส่งมอบงาน (Action Checklist)</h2>
+            <div class="docs-checklist-item"><input type="checkbox" checked> <span>ตรวจสอบความถูกต้องของเนื้อหาและตัวสะกดภาษาไทย/อังกฤษ</span></div>
+            <div class="docs-checklist-item"><input type="checkbox" checked> <span>ทดสอบการส่งออกไฟล์เป็น .docx, .pdf และ .odt</span></div>
+            <div class="docs-checklist-item"><input type="checkbox"> <span>ซ้อมการนำเสนอด้วยโหมดสไลด์และเลเซอร์พอยเตอร์</span></div>
+        `;
+
+        // Initialize Application on Load
+        window.onload = function() {
+            const savedContent = localStorage.getItem('docs_clone_content_v2');
+            const savedTitle = localStorage.getItem('docs_clone_title_v2');
+            if (savedContent && savedContent.trim().length > 20) {
+                editor.innerHTML = savedContent;
+                if (savedTitle) docTitleInput.value = savedTitle;
+            } else {
+                editor.innerHTML = SAMPLE_DOCUMENT_HTML;
+            }
+            updateOutlineAndStats();
+            setupKeyboardShortcuts();
+            setupLaserPointerTracking();
+        };
+
+        // ==================== EDITOR COMMANDS & FORMATTING ====================
+        function execCmd(command, value = null) {
+            editor.focus();
+            document.execCommand(command, false, value);
+            onEditorInput();
+        }
+
+        function applyHeading(tag) {
+            editor.focus();
+            document.execCommand('formatBlock', false, tag);
+            onEditorInput();
+        }
+
+        function applyFontFamily(fontName) {
+            editor.focus();
+            document.execCommand('fontName', false, fontName);
+            onEditorInput();
+        }
+
+        function changeFontSize(delta) {
+            currentFontSize = Math.min(72, Math.max(10, currentFontSize + delta));
+            document.getElementById('font-size-input').value = currentFontSize;
+            setExplicitFontSize(currentFontSize);
+        }
+
+        function setExplicitFontSize(sizePx) {
+            const parsed = parseInt(sizePx, 10) || 16;
+            currentFontSize = parsed;
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0 && !sel.isCollapsed) {
+                const span = document.createElement('span');
+                span.style.fontSize = parsed + 'px';
+                const range = sel.getRangeAt(0);
+                try {
+                    range.surroundContents(span);
+                } catch (e) {
+                    editor.style.fontSize = parsed + 'px';
+                }
+            } else {
+                editor.style.fontSize = parsed + 'px';
+            }
+            onEditorInput();
+        }
+
+        function setLineSpacing(val) {
+            document.documentElement.style.setProperty('--line-spacing', val);
+            showToast(`ปรับระยะห่างบรรทัดเป็น ${val}`);
+        }
+
+        function setZoom(scale) {
+            const container = document.getElementById('paper-container');
+            container.style.transform = `scale(${scale})`;
+        }
+
+        function insertPageBreak() {
+            editor.focus();
+            const breakHtml = `<div class="docs-page-break" contenteditable="false"></div><p><br></p>`;
+            document.execCommand('insertHTML', false, breakHtml);
+            onEditorInput();
+            showToast('แทรกตัวแบ่งหน้า / สไลด์ใหม่แล้ว');
+        }
+
+        function insertChecklist() {
+            editor.focus();
+            const itemHtml = `<div class="docs-checklist-item"><input type="checkbox"> <span>รายการที่ต้องทำ...</span></div>`;
+            document.execCommand('insertHTML', false, itemHtml);
+            onEditorInput();
+        }
+
+        function insertDateTime() {
+            editor.focus();
+            const nowStr = new Date().toLocaleDateString('th-TH', {
+                year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            document.execCommand('insertText', false, nowStr);
+            onEditorInput();
+        }
+
+        // ==================== OUTLINE & REAL-TIME STATS ====================
+        function onEditorInput() {
+            updateOutlineAndStats();
+            scheduleAutoSave();
+        }
+
+        function scheduleAutoSave() {
+            const statusText = document.getElementById('save-status-text');
+            statusText.textContent = 'กำลังบันทึก...';
+            clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(() => {
+                localStorage.setItem('docs_clone_content_v2', editor.innerHTML);
+                localStorage.setItem('docs_clone_title_v2', docTitleInput.value);
+                statusText.textContent = 'บันทึกแล้วในเบราว์เซอร์';
+            }, 600);
+        }
+
+        function updateOutlineAndStats() {
+            // 1. Update Word & Character Count
+            const rawText = editor.innerText || '';
+            const cleanText = rawText.replace(/แบ่งหน้า \(Page Break\) \/ สไลด์ถัดไป/g, '').trim();
+            
+            // Count words using Intl.Segmenter for accurate Thai + English word segmentation
+            let wordCount = 0;
+            if (cleanText.length > 0) {
+                if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                    const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+                    for (const seg of segmenter.segment(cleanText)) {
+                        if (seg.isWordLike) wordCount++;
+                    }
+                } else {
+                    wordCount = cleanText.split(/\s+/).filter(Boolean).length;
+                }
+            }
+
+            const charCount = cleanText.length;
+            const charNoSpace = cleanText.replace(/\s+/g, '').length;
+            const pageCount = Math.max(1, Math.ceil(editor.scrollHeight / 1122));
+
+            document.getElementById('stat-pages').textContent = `หน้า: ${pageCount}`;
+            document.getElementById('stat-words').textContent = `จำนวนคำ: ${wordCount.toLocaleString()} คำ`;
+            document.getElementById('stat-chars').textContent = `ตัวอักษร: ${charCount.toLocaleString()} ตัว`;
+
+            // Update modal stats if open
+            document.getElementById('modal-stat-pages').textContent = pageCount;
+            document.getElementById('modal-stat-words').textContent = wordCount.toLocaleString();
+            document.getElementById('modal-stat-chars').textContent = charCount.toLocaleString();
+            document.getElementById('modal-stat-chars-nospace').textContent = charNoSpace.toLocaleString();
+
+            // 2. Build Document Outline from H1, H2, H3
+            const outlineList = document.getElementById('outline-list');
+            outlineList.innerHTML = '';
+            const headings = editor.querySelectorAll('h1, h2, h3');
+
+            if (headings.length === 0) {
+                outlineList.innerHTML = `<div class="text-xs text-gray-400 p-3 text-center">ยังไม่มีหัวเรื่องในเอกสาร<br>(ใช้ H1, H2, H3 เพื่อสร้างสารบัญและแบ่งสไลด์)</div>`;
+            } else {
+                headings.forEach((h, idx) => {
+                    if (!h.id) h.id = 'doc-heading-' + idx;
+                    const level = h.tagName;
+                    const item = document.createElement('button');
+                    const indentClass = level === 'H1' ? 'font-semibold text-gray-800 pl-2' : (level === 'H2' ? 'pl-5 text-gray-700' : 'pl-8 text-gray-500 text-xs');
+                    item.className = `w-full text-left py-1.5 pr-2 rounded-lg hover:bg-blue-50 hover:text-blue-700 transition-colors truncate block ${indentClass}`;
+                    item.textContent = h.innerText || '(หัวเรื่องว่าง)';
+                    item.onclick = () => {
+                        h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    };
+                    outlineList.appendChild(item);
+                });
+            }
+
+            // 3. Calculate Slides Count
+            const slides = parseDocumentIntoSlides();
+            document.getElementById('stat-slides').textContent = `สไลด์พร้อมนำเสนอ: ${slides.length} สไลด์`;
+            document.getElementById('modal-stat-slides').textContent = slides.length;
+        }
+
+        // ==================== FILE IMPORT (OPEN .docx, .odt, .txt, .html, .md) ====================
+        function triggerFileOpen() {
+            closeAllMenus();
+            document.getElementById('file-input').click();
+        }
+
+        async function handleFileOpen(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name;
+            const baseTitle = fileName.replace(/\.[^/.]+$/, "");
+            docTitleInput.value = baseTitle;
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            showToast(`กำลังเปิดไฟล์ ${fileName}...`);
+
+            try {
+                if (ext === 'docx') {
+                    // Use Mammoth.js to convert .docx to HTML
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                    editor.innerHTML = result.value || '<p>เปิดไฟล์ .docx สำเร็จ (ไม่มีข้อความ)</p>';
+                    showToast('เปิดไฟล์ Microsoft Word (.docx) สำเร็จ!');
+                } 
+                else if (ext === 'odt') {
+                    // Use JSZip to parse OpenDocument Text (.odt) content.xml
+                    const arrayBuffer = await file.arrayBuffer();
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    const contentXmlFile = zip.file("content.xml");
+                    if (contentXmlFile) {
+                        const xmlText = await contentXmlFile.async("string");
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                        let extractedHtml = '';
+                        const nodes = xmlDoc.getElementsByTagName("*");
+                        for (let i = 0; i < nodes.length; i++) {
+                            const nodeName = nodes[i].nodeName;
+                            if (nodeName === 'text:h') {
+                                const level = nodes[i].getAttribute('text:outline-level') || '1';
+                                const tag = level === '1' ? 'h1' : (level === '2' ? 'h2' : 'h3');
+                                extractedHtml += `<${tag}>${nodes[i].textContent}</${tag}>`;
+                            } else if (nodeName === 'text:p') {
+                                if (nodes[i].parentNode && nodes[i].parentNode.nodeName !== 'table:table-cell') {
+                                    extractedHtml += `<p>${nodes[i].textContent}</p>`;
+                                }
+                            }
+                        }
+                        editor.innerHTML = extractedHtml || `<p>${xmlDoc.documentElement.textContent}</p>`;
+                        showToast('เปิดไฟล์ OpenDocument (.odt) สำเร็จ!');
+                    } else {
+                        throw new Error("ไม่พบ content.xml ในไฟล์ .odt");
+                    }
+                }
+                else if (ext === 'html' || ext === 'htm' || ext === 'doc') {
+                    const text = await file.text();
+                    // Extract body content if full HTML document
+                    const bodyMatch = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+                    editor.innerHTML = bodyMatch ? bodyMatch[1] : text;
+                    showToast(`เปิดไฟล์ ${fileName} สำเร็จ!`);
+                }
+                else if (ext === 'md') {
+                    const md = await file.text();
+                    editor.innerHTML = simpleMarkdownToHtml(md);
+                    showToast('แปลงและเปิดไฟล์ Markdown (.md) สำเร็จ!');
+                }
+                else {
+                    // Default plain text (.txt)
+                    const text = await file.text();
+                    editor.innerHTML = text.split(/\r?\n/).map(line => `<p>${escapeHtml(line) || '<br>'}</p>`).join('');
+                    showToast('เปิดไฟล์ข้อความ (.txt) สำเร็จ!');
+                }
+                onEditorInput();
+            } catch (err) {
+                console.error(err);
+                showToast('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message);
+            }
+            event.target.value = '';
+        }
+
+        // ==================== FILE EXPORT (.docx, .pdf, .odt, .doc, .txt, .html, .md) ====================
+        async function exportFile(format) {
+            closeAllMenus();
+            const title = (docTitleInput.value || 'เอกสารไม่มีชื่อ').trim();
+            const htmlContent = editor.innerHTML;
+            const plainText = editor.innerText;
+
+            showToast(`กำลังสร้างไฟล์ ${title}.${format}...`);
+
+            if (format === 'txt') {
+                const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
+                triggerDownload(blob, `${title}.txt`);
+            } 
+            else if (format === 'html') {
+                const fullHtml = buildStandaloneHtml(title, htmlContent);
+                const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+                triggerDownload(blob, `${title}.html`);
+            }
+            else if (format === 'md') {
+                const mdText = htmlToMarkdown(editor);
+                const blob = new Blob([mdText], { type: 'text/markdown;charset=utf-8' });
+                triggerDownload(blob, `${title}.md`);
+            }
+            else if (format === 'doc') {
+                // Microsoft Word 97-2003 compatible HTML wrapper
+                const wordHtml = `
+                    <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+                          xmlns:w='urn:schemas-microsoft-com:office:word' 
+                          xmlns='http://www.w3.org/TR/REC-html40'>
+                    <head><meta charset='utf-8'><title>${escapeHtml(title)}</title>
+                    <style>body { font-family: 'Sarabun', sans-serif; font-size: 16pt; } table { border-collapse: collapse; width: 100%; } td, th { border: 1px solid #888; padding: 6px; }</style>
+                    </head><body>${htmlContent}</body></html>`;
+                const blob = new Blob(['\ufeff', wordHtml], { type: 'application/msword;charset=utf-8' });
+                triggerDownload(blob, `${title}.doc`);
+            }
+            else if (format === 'docx') {
+                // Build a genuine OpenXML .docx archive using JSZip
+                const docxBlob = await generateDocxBlob(title, editor);
+                triggerDownload(docxBlob, `${title}.docx`);
+            }
+            else if (format === 'odt') {
+                // Build a genuine OASIS OpenDocument Text (.odt) ZIP package using JSZip
+                const odtBlob = await generateOdtBlob(title, editor);
+                triggerDownload(odtBlob, `${title}.odt`);
+            }
+            else if (format === 'pdf') {
+                const opt = {
+                    margin:       12,
+                    filename:     `${title}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true },
+                    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+                await html2pdf().set(opt).from(editor).save();
+                showToast(`ดาวน์โหลดไฟล์ ${title}.pdf เรียบร้อยแล้ว!`);
+                return;
+            }
+
+            showToast(`บันทึกไฟล์ ${title}.${format} เรียบร้อยแล้ว!`);
+        }
+
+        // Generate Valid .docx (Office Open XML) via JSZip
+        async function generateDocxBlob(title, rootElement) {
+            const zip = new JSZip();
+
+            // 1. [Content_Types].xml
+            zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`);
+
+            // 2. _rels/.rels
+            zip.folder("_rels").file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+
+            // 3. Build word/document.xml from Editor DOM paragraphs, headings & tables
+            let bodyXml = '';
+            const children = rootElement.children;
+            for (let i = 0; i < children.length; i++) {
+                const el = children[i];
+                const tag = el.tagName;
+                if (el.classList.contains('docs-page-break')) {
+                    bodyXml += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+                } else if (tag === 'H1' || tag === 'H2' || tag === 'H3') {
+                    const sizeHalfPt = tag === 'H1' ? '36' : (tag === 'H2' ? '28' : '24');
+                    bodyXml += `<w:p><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="${sizeHalfPt}"/></w:rPr><w:t>${escapeXml(el.innerText)}</w:t></w:r></w:p>`;
+                } else if (tag === 'UL' || tag === 'OL') {
+                    const items = el.querySelectorAll('li');
+                    items.forEach((li, idx) => {
+                        const prefix = tag === 'OL' ? `${idx + 1}. ` : `• `;
+                        bodyXml += `<w:p><w:r><w:t>${escapeXml(prefix + li.innerText)}</w:t></w:r></w:p>`;
+                    });
+                } else if (tag === 'TABLE') {
+                    bodyXml += `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/></w:tblPr>`;
+                    const rows = el.querySelectorAll('tr');
+                    rows.forEach(tr => {
+                        bodyXml += `<w:tr>`;
+                        const cells = tr.querySelectorAll('td, th');
+                        cells.forEach(td => {
+                            bodyXml += `<w:tc><w:p><w:r><w:t>${escapeXml(td.innerText)}</w:t></w:r></w:p></w:tc>`;
+                        });
+                        bodyXml += `</w:tr>`;
+                    });
+                    bodyXml += `</w:tbl>`;
+                } else {
+                    const txt = el.innerText;
+                    if (txt.trim()) {
+                        bodyXml += `<w:p><w:r><w:t>${escapeXml(txt)}</w:t></w:r></w:p>`;
+                    }
+                }
+            }
+
+            const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>${bodyXml}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body>
+</w:document>`;
+
+            zip.folder("word").file("document.xml", documentXml);
+            return await zip.generateAsync({
+                type: "blob",
+                mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            });
+        }
+
+        // Generate Valid .odt (OpenDocument Text) via JSZip
+        async function generateOdtBlob(title, rootElement) {
+            const zip = new JSZip();
+            zip.file("mimetype", "application/vnd.oasis.opendocument.text", { compression: "STORE" });
+
+            zip.folder("META-INF").file("manifest.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">
+ <manifest:file-entry manifest:full-path="/" manifest:version="1.2" manifest:media-type="application/vnd.oasis.opendocument.text"/>
+ <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>`);
+
+            let odtBody = '';
+            const children = rootElement.children;
+            for (let i = 0; i < children.length; i++) {
+                const el = children[i];
+                const tag = el.tagName;
+                if (tag === 'H1' || tag === 'H2' || tag === 'H3') {
+                    const level = tag.replace('H', '');
+                    odtBody += `<text:h text:outline-level="${level}">${escapeXml(el.innerText)}</text:h>`;
+                } else if (tag === 'UL' || tag === 'OL') {
+                    const items = el.querySelectorAll('li');
+                    items.forEach((li, idx) => {
+                        const prefix = tag === 'OL' ? `${idx + 1}. ` : `• `;
+                        odtBody += `<text:p>${escapeXml(prefix + li.innerText)}</text:p>`;
+                    });
+                } else {
+                    const txt = el.innerText.trim();
+                    if (txt) odtBody += `<text:p>${escapeXml(txt)}</text:p>`;
+                }
+            }
+
+            const contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">
+ <office:body><office:text>${odtBody}</office:text></office:body>
+</office:document-content>`;
+
+            zip.file("content.xml", contentXml);
+            return await zip.generateAsync({
+                type: "blob",
+                mimeType: "application/vnd.oasis.opendocument.text"
+            });
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        // ==================== PRESENTATION MODE (โหมดนำเสนอ) ====================
+        function parseDocumentIntoSlides() {
+            const slides = [];
+            let currentSlideHtml = '';
+            const nodes = Array.from(editor.childNodes);
+
+            nodes.forEach(node => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tag = node.tagName;
+                    const isPageBreak = node.classList && node.classList.contains('docs-page-break');
+                    const isSlideSplitHeading = (tag === 'H1' || tag === 'H2' || tag === 'HR');
+
+                    if (isPageBreak || tag === 'HR') {
+                        if (currentSlideHtml.trim()) {
+                            slides.push(currentSlideHtml);
+                            currentSlideHtml = '';
+                        }
+                    } else if (isSlideSplitHeading && currentSlideHtml.trim()) {
+                        slides.push(currentSlideHtml);
+                        currentSlideHtml = node.outerHTML;
+                    } else {
+                        currentSlideHtml += node.outerHTML;
+                    }
+                } else if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+                    currentSlideHtml += `<p>${escapeHtml(node.textContent)}</p>`;
+                }
+            });
+
+            if (currentSlideHtml.trim()) {
+                slides.push(currentSlideHtml);
+            }
+            if (slides.length === 0) {
+                slides.push(`<h1>${escapeHtml(docTitleInput.value)}</h1><p>ยังไม่มีเนื้อหาในเอกสาร</p>`);
+            }
+            return slides;
+        }
+
+        function startPresentation(mode = 'slides') {
+            closeAllMenus();
+            slidesData = parseDocumentIntoSlides();
+            currentSlideIndex = 0;
+
+            document.getElementById('pres-doc-title').textContent = docTitleInput.value;
+            document.getElementById('pres-slide-footer-title').textContent = docTitleInput.value;
+            document.getElementById('teleprompter-content').innerHTML = editor.innerHTML;
+            document.getElementById('presentation-overlay').classList.remove('hidden');
+
+            switchPresMode(mode);
+            renderCurrentSlide();
+        }
+
+        function switchPresMode(mode) {
+            const slidesContainer = document.getElementById('pres-slides-container');
+            const scrollContainer = document.getElementById('pres-scroll-container');
+            const bottomBar = document.getElementById('pres-bottom-bar');
+            const btnSlides = document.getElementById('pres-mode-slides');
+            const btnScroll = document.getElementById('pres-mode-scroll');
+
+            stopTeleprompterScroll();
+
+            if (mode === 'slides') {
+                slidesContainer.classList.remove('hidden');
+                bottomBar.classList.remove('hidden');
+                scrollContainer.classList.add('hidden');
+                btnSlides.className = "px-3 py-1.5 rounded-md bg-indigo-600 text-white font-medium transition-all flex items-center gap-1";
+                btnScroll.className = "px-3 py-1.5 rounded-md text-slate-300 hover:text-white transition-all flex items-center gap-1";
+            } else {
+                slidesContainer.classList.add('hidden');
+                bottomBar.classList.add('hidden');
+                scrollContainer.classList.remove('hidden');
+                btnScroll.className = "px-3 py-1.5 rounded-md bg-indigo-600 text-white font-medium transition-all flex items-center gap-1";
+                btnSlides.className = "px-3 py-1.5 rounded-md text-slate-300 hover:text-white transition-all flex items-center gap-1";
+            }
+        }
+
+        function renderCurrentSlide() {
+            const slideContent = document.getElementById('pres-slide-content');
+            const slideNumber = document.getElementById('pres-slide-number');
+            const dotsContainer = document.getElementById('pres-slide-dots');
+
+            slideContent.innerHTML = slidesData[currentSlideIndex];
+            slideNumber.textContent = `สไลด์ที่ ${currentSlideIndex + 1} จาก ${slidesData.length}`;
+
+            // Render slide navigation dots
+            dotsContainer.innerHTML = '';
+            slidesData.forEach((_, idx) => {
+                const dot = document.createElement('button');
+                dot.className = idx === currentSlideIndex
+                    ? "w-6 h-2.5 rounded-full bg-indigo-500 transition-all"
+                    : "w-2.5 h-2.5 rounded-full bg-slate-700 hover:bg-slate-500 transition-all";
+                dot.onclick = () => {
+                    currentSlideIndex = idx;
+                    renderCurrentSlide();
+                };
+                dotsContainer.appendChild(dot);
+            });
+        }
+
+        function changeSlide(delta) {
+            const nextIndex = currentSlideIndex + delta;
+            if (nextIndex >= 0 && nextIndex < slidesData.length) {
+                currentSlideIndex = nextIndex;
+                renderCurrentSlide();
+            }
+        }
+
+        function closePresentation() {
+            stopTeleprompterScroll();
+            if (laserActive) toggleLaserPointer();
+            document.getElementById('presentation-overlay').classList.add('hidden');
+        }
+
+        // Laser Pointer Logic
+        function toggleLaserPointer() {
+            laserActive = !laserActive;
+            const dot = document.getElementById('laser-dot');
+            const btn = document.getElementById('laser-toggle-btn');
+            if (laserActive) {
+                dot.style.display = 'block';
+                btn.classList.add('ring-2', 'ring-red-500', 'bg-red-950/60');
+            } else {
+                dot.style.display = 'none';
+                btn.classList.remove('ring-2', 'ring-red-500', 'bg-red-950/60');
+            }
+        }
+
+        function setupLaserPointerTracking() {
+            const dot = document.getElementById('laser-dot');
+            window.addEventListener('mousemove', (e) => {
+                if (!laserActive) return;
+                dot.style.left = e.clientX + 'px';
+                dot.style.top = e.clientY + 'px';
+            });
+        }
+
+        // Teleprompter Auto-scroll
+        function toggleTeleprompterScroll() {
+            if (teleScrollInterval) {
+                stopTeleprompterScroll();
+            } else {
+                const box = document.getElementById('teleprompter-scroll-box');
+                document.getElementById('tele-play-icon').textContent = 'pause';
+                document.getElementById('tele-play-text').textContent = 'หยุดชั่วคราว';
+                teleScrollInterval = setInterval(() => {
+                    const speed = parseInt(document.getElementById('tele-speed').value, 10) || 3;
+                    box.scrollTop += speed * 0.6;
+                }, 30);
+            }
+        }
+
+        function stopTeleprompterScroll() {
+            if (teleScrollInterval) {
+                clearInterval(teleScrollInterval);
+                teleScrollInterval = null;
+            }
+            const icon = document.getElementById('tele-play-icon');
+            const txt = document.getElementById('tele-play-text');
+            if (icon) icon.textContent = 'play_arrow';
+            if (txt) txt.textContent = 'เริ่มเลื่อนอัตโนมัติ';
+        }
+
+        function adjustTeleFontSize(delta) {
+            teleFontSize = Math.min(48, Math.max(16, teleFontSize + delta));
+            document.getElementById('teleprompter-content').style.fontSize = teleFontSize + 'px';
+            document.getElementById('tele-font-label').textContent = teleFontSize + 'px';
+        }
+
+        // ==================== MODALS & INSERT HELPERS ====================
+        function openModal(modalId) {
+            closeAllMenus();
+            document.getElementById('modal-backdrop').classList.remove('hidden');
+            document.querySelectorAll('.modal-box').forEach(m => m.classList.add('hidden'));
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+
+        function closeAllModals() {
+            document.getElementById('modal-backdrop').classList.add('hidden');
+            document.querySelectorAll('.modal-box').forEach(m => m.classList.add('hidden'));
+        }
+
+        function confirmInsertTable() {
+            const rows = Math.min(30, Math.max(1, parseInt(document.getElementById('table-rows').value, 10) || 3));
+            const cols = Math.min(12, Math.max(1, parseInt(document.getElementById('table-cols').value, 10) || 3));
+            let html = '<table><thead><tr>';
+            for (let c = 0; c < cols; c++) {
+                html += `<th>หัวตาราง ${c + 1}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+            for (let r = 0; r < rows - 1; r++) {
+                html += '<tr>';
+                for (let c = 0; c < cols; c++) {
+                    html += `<td>ข้อมูล</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table><p><br></p>';
+            closeAllModals();
+            editor.focus();
+            document.execCommand('insertHTML', false, html);
+            onEditorInput();
+        }
+
+        function confirmInsertLink() {
+            const text = document.getElementById('link-text').value.trim() || document.getElementById('link-url').value.trim();
+            const url = document.getElementById('link-url').value.trim();
+            closeAllModals();
+            if (url) {
+                editor.focus();
+                document.execCommand('insertHTML', false, `<a href="${escapeHtml(url)}" target="_blank">${escapeHtml(text)}</a>`);
+                onEditorInput();
+            }
+        }
+
+        function triggerImageUpload() {
+            closeAllMenus();
+            document.getElementById('image-input').click();
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                editor.focus();
+                document.execCommand('insertHTML', false, `<img src="${e.target.result}" alt="${escapeHtml(file.name)}" /><p><br></p>`);
+                onEditorInput();
+                showToast('แทรกรูปภาพเรียบร้อยแล้ว');
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        function confirmInsertImageUrl() {
+            const url = document.getElementById('img-url-input').value.trim() || 'https://placehold.co/600x300/e2e8f0/1e293b?text=Docs+Clone';
+            closeAllModals();
+            editor.focus();
+            document.execCommand('insertHTML', false, `<img src="${escapeHtml(url)}" alt="Image" onerror="this.src='https://placehold.co/600x300/fee2e2/991b1b?text=Image+Not+Found'" /><p><br></p>`);
+            onEditorInput();
+        }
+
+        function performFindReplace() {
+            const findStr = document.getElementById('find-input').value;
+            const replaceStr = document.getElementById('replace-input').value;
+            if (!findStr) return;
+            const regex = new RegExp(findStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+            editor.innerHTML = editor.innerHTML.replace(regex, replaceStr);
+            onEditorInput();
+            closeAllModals();
+            showToast(`แทนที่ข้อความ "${findStr}" เรียบร้อยแล้ว`);
+        }
+
+        function setPageOrientation(mode) {
+            const btnP = document.getElementById('orient-portrait');
+            const btnL = document.getElementById('orient-landscape');
+            if (mode === 'landscape') {
+                document.documentElement.style.setProperty('--page-width', '297mm');
+                document.documentElement.style.setProperty('--page-min-height', '210mm');
+                btnL.className = "py-2 px-3 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium flex items-center justify-center gap-1.5";
+                btnP.className = "py-2 px-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5";
+            } else {
+                document.documentElement.style.setProperty('--page-width', '210mm');
+                document.documentElement.style.setProperty('--page-min-height', '297mm');
+                btnP.className = "py-2 px-3 rounded-lg border-2 border-blue-600 bg-blue-50 text-blue-700 font-medium flex items-center justify-center gap-1.5";
+                btnL.className = "py-2 px-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5";
+            }
+            showToast(`เปลี่ยนแนวกระดาษเป็น ${mode === 'landscape' ? 'แนวนอน' : 'แนวตั้ง'}`);
+        }
+
+        function setPageMargins(val) {
+            document.documentElement.style.setProperty('--page-padding-top', val);
+            document.documentElement.style.setProperty('--page-padding-bottom', val);
+            document.documentElement.style.setProperty('--page-padding-left', val);
+            document.documentElement.style.setProperty('--page-padding-right', val);
+            showToast('อัปเดตระยะขอบกระดาษแล้ว');
+        }
+
+        function openWordCountModal() {
+            updateOutlineAndStats();
+            openModal('word-count-modal');
+        }
+
+        // ==================== DOCUMENT ACTIONS & VOICE TYPING ====================
+        function newDocument() {
+            closeAllMenus();
+            docTitleInput.value = 'เอกสารไม่มีชื่อ';
+            editor.innerHTML = '<h1>หัวข้อเอกสารใหม่</h1><p>เริ่มพิมพ์เนื้อหาของคุณที่นี่...</p>';
+            onEditorInput();
+            editor.focus();
+            showToast('สร้างเอกสารใหม่แล้ว');
+        }
+
+        function loadSampleDocument() {
+            closeAllMenus();
+            docTitleInput.value = 'แผนพัฒนาซอฟต์แวร์และสถาปัตยกรรมระบบ (Docs Clone)';
+            editor.innerHTML = SAMPLE_DOCUMENT_HTML;
+            onEditorInput();
+            showToast('โหลดเอกสารตัวอย่างเรียบร้อยแล้ว');
+        }
+
+        function copyAllDocumentText() {
+            closeAllMenus();
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('copy');
+            sel.removeAllRanges();
+            showToast('คัดลอกเนื้อหาทั้งหมดลงคลิปบอร์ดแล้ว');
+        }
+
+        function toggleVoiceTyping() {
+            closeAllMenus();
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                showToast('เบราว์เซอร์ของคุณไม่รองรับการพิมพ์ด้วยเสียง (แนะนำให้ใช้ Chrome)');
+                return;
+            }
+            const voiceBtn = document.getElementById('voice-btn');
+            if (!recognition) {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'th-TH';
+                recognition.continuous = true;
+                recognition.interimResults = false;
+                recognition.onresult = (event) => {
+                    const transcript = event.results[event.results.length - 1][0].transcript;
+                    editor.focus();
+                    document.execCommand('insertText', false, transcript + ' ');
+                    onEditorInput();
+                };
+                recognition.onend = () => {
+                    isRecording = false;
+                    voiceBtn.classList.remove('active', '!bg-red-100', '!text-red-600');
+                };
+            }
+
+            if (isRecording) {
+                recognition.stop();
+                isRecording = false;
+                voiceBtn.classList.remove('active', '!bg-red-100', '!text-red-600');
+                showToast('หยุดการพิมพ์ด้วยเสียงแล้ว');
+            } else {
+                recognition.start();
+                isRecording = true;
+                voiceBtn.classList.add('active', '!bg-red-100', '!text-red-600');
+                showToast('🎙️ กำลังฟังเสียงภาษาไทย... พูดเพื่อพิมพ์ได้เลย');
+            }
+        }
+
+        // ==================== UI TOGGLES & MENUS ====================
+        function toggleMenu(menuId) {
+            const target = document.getElementById(menuId);
+            const isHidden = target.classList.contains('hidden');
+            closeAllMenus();
+            if (isHidden) target.classList.remove('hidden');
+        }
+
+        function closeAllMenus() {
+            document.querySelectorAll('.menu-dropdown').forEach(el => el.classList.add('hidden'));
+        }
+
+        function toggleOutlineSidebar() {
+            closeAllMenus();
+            const sidebar = document.getElementById('outline-sidebar');
+            const openBtn = document.getElementById('open-outline-btn');
+            sidebar.classList.toggle('hidden');
+            openBtn.classList.toggle('hidden', !sidebar.classList.contains('hidden'));
+        }
+
+        function toggleRuler() {
+            closeAllMenus();
+            document.getElementById('ruler-bar').classList.toggle('hidden');
+        }
+
+        function toggleStar(btn) {
+            btn.classList.toggle('text-amber-400');
+            const icon = btn.querySelector('span');
+            icon.style.fontVariationSettings = btn.classList.contains('text-amber-400') ? "'FILL' 1" : "'FILL' 0";
+        }
+
+        function toggleFullScreen() {
+            closeAllMenus();
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        function focusEditorIfOutside(e) {
+            if (e.target.id === 'canvas-scroll' || e.target.id === 'paper-container') {
+                editor.focus();
+            }
+        }
+
+        // Close menus when clicking outside
+        window.addEventListener('click', (e) => {
+            if (!e.target.closest('#menu-bar') && !e.target.closest('[onclick*="menu-quick-export"]')) {
+                closeAllMenus();
+            }
+        });
+
+        // Keyboard Shortcuts
+        function setupKeyboardShortcuts() {
+            window.addEventListener('keydown', (e) => {
+                const presOverlay = document.getElementById('presentation-overlay');
+                const isPresenting = !presOverlay.classList.contains('hidden');
+
+                if (isPresenting) {
+                    if (e.key === 'ArrowRight' || e.key === ' ') {
+                        e.preventDefault();
+                        changeSlide(1);
+                    } else if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        changeSlide(-1);
+                    } else if (e.key === 'Escape') {
+                        closePresentation();
+                    } else if (e.key.toLowerCase() === 'l') {
+                        toggleLaserPointer();
+                    }
+                    return;
+                }
+
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+                    e.preventDefault();
+                    triggerFileOpen();
+                } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+                    e.preventDefault();
+                    openModal('find-replace-modal');
+                }
+            });
+        }
+
+        // ==================== UTILITY CONVERTERS ====================
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function escapeXml(str) {
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+        }
+
+        function buildStandaloneHtml(title, bodyContent) {
+            return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Sarabun',sans-serif;max-width:210mm;margin:20mm auto;line-height:1.6;color:#222;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ccc;padding:8px;}</style>
+</head><body>${bodyContent}</body></html>`;
+        }
+
+        function htmlToMarkdown(root) {
+            let md = '';
+            root.childNodes.forEach(node => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const tag = node.tagName;
+                    if (tag === 'H1') md += `# ${node.innerText}\n\n`;
+                    else if (tag === 'H2') md += `## ${node.innerText}\n\n`;
+                    else if (tag === 'H3') md += `### ${node.innerText}\n\n`;
+                    else if (tag === 'UL') {
+                        node.querySelectorAll('li').forEach(li => md += `- ${li.innerText}\n`);
+                        md += '\n';
+                    } else if (tag === 'OL') {
+                        node.querySelectorAll('li').forEach((li, i) => md += `${i+1}. ${li.innerText}\n`);
+                        md += '\n';
+                    } else if (tag === 'BLOCKQUOTE') {
+                        md += `> ${node.innerText}\n\n`;
+                    } else {
+                        md += `${node.innerText}\n\n`;
+                    }
+                }
+            });
+            return md.trim();
+        }
+
+        function simpleMarkdownToHtml(md) {
+            return md.split(/\r?\n/).map(line => {
+                if (line.startsWith('### ')) return `<h3>${escapeHtml(line.slice(4))}</h3>`;
+                if (line.startsWith('## ')) return `<h2>${escapeHtml(line.slice(3))}</h2>`;
+                if (line.startsWith('# ')) return `<h1>${escapeHtml(line.slice(2))}</h1>`;
+                if (line.startsWith('- ') || line.startsWith('* ')) return `<ul><li>${escapeHtml(line.slice(2))}</li></ul>`;
+                if (line.startsWith('> ')) return `<blockquote>${escapeHtml(line.slice(2))}</blockquote>`;
+                return line.trim() ? `<p>${escapeHtml(line)}</p>` : '';
+            }).join('');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3200);
+        }
+    </script>
+</body>
+</html>

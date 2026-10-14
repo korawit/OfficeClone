@@ -1,0 +1,2551 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slides Clone - โปรแกรมสร้างงานนำเสนอ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:ital,wght@0,400;0,600;0,700;1,400&family=Kanit:wght@400;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- PptxGenJS for genuine .pptx export -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <!-- html2canvas & jsPDF for genuine .pdf and image export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- JSZip for parsing uploaded .pptx files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            user-select: none;
+            overflow: hidden;
+        }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f3f4;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #dadce0;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bdc1c6;
+        }
+        /* Slide Canvas Base (960x540 - 16:9 ratio) */
+        .slide-stage {
+            width: 960px;
+            height: 540px;
+            position: relative;
+            background-color: #ffffff;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0,0,0,0.2);
+            transform-origin: center center;
+            overflow: hidden;
+        }
+        /* Selection & Resize Handles */
+        .slide-element {
+            position: absolute;
+            box-sizing: border-box;
+            cursor: move;
+        }
+        .slide-element.selected {
+            outline: 2px solid #1a73e8;
+            z-index: 50;
+        }
+        .slide-element.editing-text {
+            outline: 2px dashed #1a73e8;
+            cursor: text;
+            user-select: text;
+        }
+        .resize-handle {
+            position: absolute;
+            width: 9px;
+            height: 9px;
+            background-color: #1a73e8;
+            border: 1.5px solid #ffffff;
+            z-index: 60;
+            display: none;
+        }
+        .slide-element.selected .resize-handle {
+            display: block;
+        }
+        .handle-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+        .handle-n  { top: -5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+        .handle-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+        .handle-e  { top: calc(50% - 4.5px); right: -5px; cursor: ew-resize; }
+        .handle-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+        .handle-s  { bottom: -5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+        .handle-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+        .handle-w  { top: calc(50% - 4.5px); left: -5px; cursor: ew-resize; }
+
+        /* Dropdown Menus */
+        .menu-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            min-width: 230px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.16);
+            border-radius: 6px;
+            padding: 6px 0;
+            z-index: 1000;
+            border: 1px solid #e0e0e0;
+        }
+        .menu-item-group:hover .menu-dropdown,
+        .menu-item-group.active .menu-dropdown {
+            display: block;
+        }
+        /* Submenu */
+        .submenu-group {
+            position: relative;
+        }
+        .submenu-dropdown {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 100%;
+            background: white;
+            min-width: 240px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.16);
+            border-radius: 6px;
+            padding: 6px 0;
+            z-index: 1001;
+            border: 1px solid #e0e0e0;
+        }
+        .submenu-group:hover .submenu-dropdown {
+            display: block;
+        }
+
+        /* Laser Pointer in Presentation Mode */
+        .laser-cursor {
+            cursor: none !important;
+        }
+        #laserDot {
+            pointer-events: none;
+            position: fixed;
+            width: 14px;
+            height: 14px;
+            background: #ff0000;
+            border-radius: 50%;
+            box-shadow: 0 0 10px 4px rgba(255, 0, 0, 0.8), 0 0 20px 8px rgba(255, 50, 50, 0.5);
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-[#f8f9fa] text-[#202124] flex flex-col h-screen w-screen">
+
+    <header class="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center justify-between select-none z-40">
+        <!-- Left: Logo, Title & Menu -->
+        <div class="flex items-center space-x-2">
+            <!-- Google Slides Icon -->
+            <div class="w-10 h-10 rounded flex items-center justify-center bg-[#fbbc04] text-white shadow-sm cursor-pointer hover:bg-[#f29900] transition" onclick="showToast('Slides Clone SPA พร้อมใช้งาน!')">
+                <i class="ph-fill ph-presentation text-2xl"></i>
+            </div>
+
+            <div class="flex flex-col">
+                <!-- Title Row -->
+                <div class="flex items-center space-x-1">
+                    <input id="presentationTitle" type="text" value="งานนำเสนอไม่มีชื่อ" 
+                        class="text-base font-medium px-1.5 py-0.5 rounded border border-transparent hover:border-gray-300 focus:border-[#1a73e8] focus:outline-none transition w-64"
+                        onchange="saveStateToHistory('เปลี่ยนชื่อไฟล์')" />
+                    <button id="starBtn" onclick="toggleStar()" class="p-1 text-gray-500 hover:bg-gray-100 rounded" title="ติดดาว">
+                        <i class="ph ph-star text-lg"></i>
+                    </button>
+                    <span id="saveStatus" class="text-xs text-gray-400 pl-2 flex items-center gap-1">
+                        <i class="ph ph-cloud-check text-sm"></i> บันทึกในเบราว์เซอร์แล้ว
+                    </span>
+                </div>
+
+                <!-- Menu Bar -->
+                <div class="flex items-center space-x-0.5 text-sm text-gray-700 mt-0.5">
+                    <!-- ไฟล์ (File) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">ไฟล์</button>
+                        <div class="menu-dropdown">
+                            <button onclick="createNewPresentation()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-file-plus text-lg"></i> สร้างใหม่</span>
+                                <span class="text-xs text-gray-400">Ctrl+N</span>
+                            </button>
+                            <button onclick="triggerFileInput()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-folder-open text-lg"></i> เปิดไฟล์ (.pptx, .json)</span>
+                                <span class="text-xs text-gray-400">Ctrl+O</span>
+                            </button>
+                            <button onclick="loadDemoTemplate()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-magic-wand text-lg text-amber-500"></i> โหลดเทมเพลตตัวอย่าง
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <!-- Download Submenu -->
+                            <div class="submenu-group">
+                                <button class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                    <span class="flex items-center gap-2"><i class="ph ph-download-simple text-lg"></i> ดาวน์โหลดเป็น</span>
+                                    <i class="ph ph-caret-right text-sm"></i>
+                                </button>
+                                <div class="submenu-dropdown">
+                                    <button onclick="exportToPPTX()" class="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph-fill ph-file-ppt text-orange-600 text-lg"></i> Microsoft PowerPoint (.pptx)
+                                    </button>
+                                    <button onclick="exportToPDF()" class="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph-fill ph-file-pdf text-red-600 text-lg"></i> เอกสาร PDF (.pdf)
+                                    </button>
+                                    <button onclick="exportToJSON()" class="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph-fill ph-file-code text-blue-600 text-lg"></i> โครงการ Slides Clone (.json)
+                                    </button>
+                                    <button onclick="exportCurrentSlideImage('png')" class="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph-fill ph-image text-emerald-600 text-lg"></i> รูปภาพ PNG สไลด์ปัจจุบัน (.png)
+                                    </button>
+                                    <button onclick="exportCurrentSlideImage('jpeg')" class="w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph-fill ph-image text-teal-600 text-lg"></i> รูปภาพ JPEG สไลด์ปัจจุบัน (.jpg)
+                                    </button>
+                                </div>
+                            </div>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="focusTitle()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-pencil-simple text-lg"></i> เปลี่ยนชื่อ
+                            </button>
+                            <button onclick="window.print()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-printer text-lg"></i> พิมพ์</span>
+                                <span class="text-xs text-gray-400">Ctrl+P</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- แก้ไข (Edit) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">แก้ไข</button>
+                        <div class="menu-dropdown">
+                            <button onclick="undo()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-arrow-u-up-left text-lg"></i> เลิกทำ</span>
+                                <span class="text-xs text-gray-400">Ctrl+Z</span>
+                            </button>
+                            <button onclick="redo()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-arrow-u-up-right text-lg"></i> ทำซ้ำ</span>
+                                <span class="text-xs text-gray-400">Ctrl+Y</span>
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="duplicateSelectedElement()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-copy text-lg"></i> ทำซ้ำวัตถุที่เลือก</span>
+                                <span class="text-xs text-gray-400">Ctrl+D</span>
+                            </button>
+                            <button onclick="deleteSelectedElement()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between text-red-600">
+                                <span class="flex items-center gap-2"><i class="ph ph-trash text-lg"></i> ลบวัตถุที่เลือก</span>
+                                <span class="text-xs text-gray-400">Del</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ดู (View) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">ดู</button>
+                        <div class="menu-dropdown">
+                            <button onclick="startPresentation(0)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-play text-lg"></i> เริ่มนำเสนอตั้งแต่ต้น</span>
+                                <span class="text-xs text-gray-400">Ctrl+F5</span>
+                            </button>
+                            <button onclick="startPresentation(state.currentSlideIndex)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-presentation-chart text-lg"></i> นำเสนอจากสไลด์ปัจจุบัน</span>
+                                <span class="text-xs text-gray-400">F5</span>
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="toggleGrid()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-grid-four text-lg"></i> สลับเส้นตารางช่วยจัดวาง
+                            </button>
+                            <button onclick="toggleSpeakerNotes()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-note text-lg"></i> แสดง/ซ่อน บันทึกผู้บรรยาย
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="changeZoom(0.1)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-magnifying-glass-plus text-lg"></i> ซูมเข้า
+                            </button>
+                            <button onclick="changeZoom(-0.1)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-magnifying-glass-minus text-lg"></i> ซูมออก
+                            </button>
+                            <button onclick="resetZoom()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-corners-out text-lg"></i> พอดีกับหน้าจอ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- แทรก (Insert) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">แทรก</button>
+                        <div class="menu-dropdown">
+                            <button onclick="addTextBox()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-text-t text-lg"></i> กล่องข้อความ
+                            </button>
+                            <button onclick="openImageModal()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-image text-lg"></i> รูปภาพ (อัปโหลด / URL)
+                            </button>
+                            <div class="submenu-group">
+                                <button class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                    <span class="flex items-center gap-2"><i class="ph ph-shapes text-lg"></i> รูปร่าง</span>
+                                    <i class="ph ph-caret-right text-sm"></i>
+                                </button>
+                                <div class="submenu-dropdown">
+                                    <button onclick="addShape('rect')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-square text-lg"></i> สี่เหลี่ยมผืนผ้า
+                                    </button>
+                                    <button onclick="addShape('roundRect')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-bounding-box text-lg"></i> สี่เหลี่ยมมุมมน
+                                    </button>
+                                    <button onclick="addShape('ellipse')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-circle text-lg"></i> วงกลม / วงรี
+                                    </button>
+                                    <button onclick="addShape('triangle')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-triangle text-lg"></i> สามเหลี่ยม
+                                    </button>
+                                    <button onclick="addShape('star')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-star text-lg"></i> ดาว 5 แฉก
+                                    </button>
+                                    <button onclick="addShape('arrowRight')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                        <i class="ph ph-arrow-fat-right text-lg"></i> ลูกศรชี้ขวา
+                                    </button>
+                                </div>
+                            </div>
+                            <button onclick="addLine()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-minus text-lg"></i> เส้นตรง
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="addNewSlide()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-plus-square text-lg"></i> สไลด์ใหม่</span>
+                                <span class="text-xs text-gray-400">Ctrl+M</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- รูปแบบ (Format) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">รูปแบบ</button>
+                        <div class="menu-dropdown">
+                            <button onclick="toggleTextProp('bold')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-text-b text-lg"></i> ตัวหนา</span>
+                                <span class="text-xs text-gray-400">Ctrl+B</span>
+                            </button>
+                            <button onclick="toggleTextProp('italic')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-text-italic text-lg"></i> ตัวเอียง</span>
+                                <span class="text-xs text-gray-400">Ctrl+I</span>
+                            </button>
+                            <button onclick="toggleTextProp('underline')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center justify-between">
+                                <span class="flex items-center gap-2"><i class="ph ph-text-underline text-lg"></i> ขีดเส้นใต้</span>
+                                <span class="text-xs text-gray-400">Ctrl+U</span>
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="setTextAlign('left')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-text-align-left text-lg"></i> ชิดซ้าย
+                            </button>
+                            <button onclick="setTextAlign('center')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-text-align-center text-lg"></i> กึ่งกลาง
+                            </button>
+                            <button onclick="setTextAlign('right')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-text-align-right text-lg"></i> ชิดขวา
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- สไลด์ (Slide) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">สไลด์</button>
+                        <div class="menu-dropdown">
+                            <button onclick="addNewSlide()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-plus-circle text-lg"></i> สไลด์ใหม่
+                            </button>
+                            <button onclick="duplicateCurrentSlide()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-copy-simple text-lg"></i> ทำซ้ำสไลด์
+                            </button>
+                            <button onclick="deleteCurrentSlide()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2 text-red-600">
+                                <i class="ph ph-trash-simple text-lg"></i> ลบสไลด์
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="moveSlide(-1)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-arrow-up text-lg"></i> ย้ายสไลด์ขึ้น
+                            </button>
+                            <button onclick="moveSlide(1)" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-arrow-down text-lg"></i> ย้ายสไลด์ลง
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="openBackgroundModal()" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-paint-bucket text-lg"></i> เปลี่ยนพื้นหลัง...
+                            </button>
+                            <button onclick="toggleRightSidebar('layouts')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-layout text-lg"></i> เปลี่ยนเลย์เอาต์...
+                            </button>
+                            <button onclick="toggleRightSidebar('themes')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-palette text-lg"></i> เปลี่ยนธีม...
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- จัดเรียง (Arrange) -->
+                    <div class="menu-item-group relative">
+                        <button class="px-2 py-0.5 hover:bg-gray-100 rounded">จัดเรียง</button>
+                        <div class="menu-dropdown">
+                            <button onclick="changeLayerOrder('front')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-Exclude text-lg"></i> นำไปไว้หน้าสุด
+                            </button>
+                            <button onclick="changeLayerOrder('back')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-intersect text-lg"></i> ส่งไปไว้หลังสุด
+                            </button>
+                            <hr class="my-1 border-gray-200">
+                            <button onclick="centerElementOnSlide('horizontal')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-align-center-horizontal text-lg"></i> จัดกึ่งกลางแนวนอนบนสไลด์
+                            </button>
+                            <button onclick="centerElementOnSlide('vertical')" class="w-full text-left px-4 py-1.5 hover:bg-gray-100 flex items-center gap-2">
+                                <i class="ph ph-align-center-vertical text-lg"></i> จัดกึ่งกลางแนวตั้งบนสไลด์
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Quick Export, Present Button & User Avatar -->
+        <div class="flex items-center space-x-2.5">
+            <!-- Quick Open File Button -->
+            <button onclick="triggerFileInput()" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-full transition" title="เปิดไฟล์ .pptx หรือ .json">
+                <i class="ph ph-folder-open text-base"></i>
+                <span class="hidden md:inline">เปิดไฟล์</span>
+            </button>
+
+            <!-- Quick Save PPTX Button -->
+            <button onclick="exportToPPTX()" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-full transition" title="บันทึกเป็นไฟล์ PowerPoint (.pptx)">
+                <i class="ph-fill ph-file-ppt text-base"></i>
+                <span class="hidden sm:inline">บันทึก .PPTX</span>
+            </button>
+
+            <!-- Quick Save PDF Button -->
+            <button onclick="exportToPDF()" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-full transition" title="บันทึกเป็นไฟล์ PDF (.pdf)">
+                <i class="ph-fill ph-file-pdf text-base"></i>
+                <span class="hidden sm:inline">บันทึก .PDF</span>
+            </button>
+
+            <!-- Slideshow / Present Button -->
+            <div class="flex items-center bg-[#1a73e8] hover:bg-[#1557b0] text-white rounded-full shadow-sm overflow-hidden transition">
+                <button onclick="startPresentation(state.currentSlideIndex)" class="flex items-center gap-2 px-4 py-1.5 text-sm font-medium">
+                    <i class="ph-fill ph-play text-base"></i>
+                    <span>นำเสนอ</span>
+                </button>
+                <button onclick="startPresentation(0)" class="px-2 py-1.5 border-l border-blue-400 hover:bg-blue-700 text-xs" title="เริ่มนำเสนอตั้งแต่สไลด์แรก">
+                    1
+                </button>
+            </div>
+
+            <!-- Avatar -->
+            <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center font-semibold text-sm shadow-inner">
+                G
+            </div>
+        </div>
+    </header>
+
+    <div class="bg-[#edf2fa] mx-3 my-1.5 px-3 py-1 rounded-full flex items-center flex-wrap gap-1 text-gray-700 shadow-xs z-30 select-none">
+        <!-- New Slide + Layout Dropdown -->
+        <div class="flex items-center">
+            <button onclick="addNewSlide()" class="p-1.5 hover:bg-gray-200 rounded-l-md flex items-center" title="สไลด์ใหม่ (Ctrl+M)">
+                <i class="ph ph-plus text-lg font-bold"></i>
+            </button>
+            <button onclick="toggleRightSidebar('layouts')" class="p-1 hover:bg-gray-200 rounded-r-md" title="เลือกเลย์เอาต์สไลด์ใหม่">
+                <i class="ph ph-caret-down text-xs"></i>
+            </button>
+        </div>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Undo / Redo / Print -->
+        <button onclick="undo()" class="p-1.5 hover:bg-gray-200 rounded" title="เลิกทำ (Ctrl+Z)">
+            <i class="ph ph-arrow-u-up-left text-lg"></i>
+        </button>
+        <button onclick="redo()" class="p-1.5 hover:bg-gray-200 rounded" title="ทำซ้ำ (Ctrl+Y)">
+            <i class="ph ph-arrow-u-up-right text-lg"></i>
+        </button>
+        <button onclick="window.print()" class="p-1.5 hover:bg-gray-200 rounded" title="พิมพ์">
+            <i class="ph ph-printer text-lg"></i>
+        </button>
+
+        <!-- Zoom control -->
+        <div class="flex items-center bg-white/70 rounded px-1.5 py-0.5 border border-gray-200 mx-1">
+            <button onclick="changeZoom(-0.1)" class="p-0.5 hover:bg-gray-200 rounded" title="ซูมออก"><i class="ph ph-minus text-xs"></i></button>
+            <span id="zoomLabel" onclick="resetZoom()" class="text-xs font-medium px-2 cursor-pointer" title="คลิกเพื่อรีเซ็ตขนาด">100%</span>
+            <button onclick="changeZoom(0.1)" class="p-0.5 hover:bg-gray-200 rounded" title="ซูมเข้า"><i class="ph ph-plus text-xs"></i></button>
+        </div>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Insert Tools: Text, Image, Shapes, Line -->
+        <button onclick="addTextBox()" class="p-1.5 hover:bg-gray-200 rounded flex items-center gap-1" title="แทรกกล่องข้อความ">
+            <i class="ph ph-textbox text-lg"></i>
+        </button>
+        <button onclick="openImageModal()" class="p-1.5 hover:bg-gray-200 rounded flex items-center gap-1" title="แทรกรูปภาพ">
+            <i class="ph ph-image text-lg"></i>
+        </button>
+
+        <!-- Shape Quick Picker -->
+        <div class="relative group">
+            <button class="p-1.5 hover:bg-gray-200 rounded flex items-center gap-0.5" title="แทรกรูปร่าง">
+                <i class="ph ph-shapes text-lg"></i>
+                <i class="ph ph-caret-down text-xs"></i>
+            </button>
+            <div class="hidden group-hover:grid grid-cols-3 gap-1.5 p-2 bg-white shadow-lg border border-gray-200 rounded-lg absolute top-full left-0 z-50 w-36">
+                <button onclick="addShape('rect')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="สี่เหลี่ยม">
+                    <i class="ph ph-square text-xl"></i>
+                </button>
+                <button onclick="addShape('roundRect')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="สี่เหลี่ยมมุมมน">
+                    <i class="ph ph-bounding-box text-xl"></i>
+                </button>
+                <button onclick="addShape('ellipse')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="วงกลม">
+                    <i class="ph ph-circle text-xl"></i>
+                </button>
+                <button onclick="addShape('triangle')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="สามเหลี่ยม">
+                    <i class="ph ph-triangle text-xl"></i>
+                </button>
+                <button onclick="addShape('star')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="ดาว">
+                    <i class="ph ph-star text-xl"></i>
+                </button>
+                <button onclick="addShape('arrowRight')" class="p-2 hover:bg-blue-50 rounded flex flex-col items-center text-xs gap-1" title="ลูกศร">
+                    <i class="ph ph-arrow-fat-right text-xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <button onclick="addLine()" class="p-1.5 hover:bg-gray-200 rounded" title="แทรกเส้นตรง">
+            <i class="ph ph-minus text-lg"></i>
+        </button>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Object Fill & Stroke Controls -->
+        <div class="flex items-center space-x-1">
+            <label class="p-1.5 hover:bg-gray-200 rounded cursor-pointer flex items-center gap-1 relative" title="สีพื้นหลังวัตถุ">
+                <i class="ph ph-paint-bucket text-lg"></i>
+                <input id="toolFillColor" type="color" value="#e8f0fe" onchange="updateSelectedElementProp('fillColor', this.value)" class="w-4 h-4 cursor-pointer border-0 bg-transparent p-0" />
+            </label>
+            <button onclick="updateSelectedElementProp('fillColor', 'transparent')" class="text-xs px-1.5 py-1 hover:bg-gray-200 rounded text-gray-600" title="พื้นหลังโปร่งใส">
+                ใส
+            </button>
+
+            <label class="p-1.5 hover:bg-gray-200 rounded cursor-pointer flex items-center gap-1" title="สีเส้นขอบ">
+                <i class="ph ph-pencil-line text-lg"></i>
+                <input id="toolBorderColor" type="color" value="#1a73e8" onchange="updateSelectedElementProp('borderColor', this.value)" class="w-4 h-4 cursor-pointer border-0 bg-transparent p-0" />
+            </label>
+
+            <select id="toolBorderWidth" onchange="updateSelectedElementProp('borderWidth', parseInt(this.value))" class="text-xs bg-white border border-gray-300 rounded px-1.5 py-1 focus:outline-none" title="ความหนาเส้นขอบ">
+                <option value="0">0px (ไร้ขอบ)</option>
+                <option value="1">1px</option>
+                <option value="2">2px</option>
+                <option value="4">4px</option>
+                <option value="8">8px</option>
+            </select>
+        </div>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Typography Controls -->
+        <div class="flex items-center space-x-1">
+            <select id="toolFontFamily" onchange="updateSelectedElementProp('fontFamily', this.value)" class="text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none w-28" title="แบบอักษร">
+                <option value="Sarabun">Sarabun</option>
+                <option value="Kanit">Kanit</option>
+                <option value="Prompt">Prompt</option>
+                <option value="Inter">Inter</option>
+                <option value="Arial">Arial</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Courier New">Courier New</option>
+            </select>
+
+            <!-- Font Size -->
+            <div class="flex items-center bg-white border border-gray-300 rounded overflow-hidden">
+                <button onclick="stepFontSize(-2)" class="px-1.5 py-0.5 hover:bg-gray-100 text-xs font-bold">-</button>
+                <input id="toolFontSize" type="number" value="24" min="8" max="200" onchange="updateSelectedElementProp('fontSize', parseInt(this.value))" class="w-10 text-center text-xs py-0.5 focus:outline-none" />
+                <button onclick="stepFontSize(2)" class="px-1.5 py-0.5 hover:bg-gray-100 text-xs font-bold">+</button>
+            </div>
+
+            <button id="btnBold" onclick="toggleTextProp('bold')" class="p-1.5 hover:bg-gray-200 rounded" title="ตัวหนา (Ctrl+B)">
+                <i class="ph ph-text-b text-lg"></i>
+            </button>
+            <button id="btnItalic" onclick="toggleTextProp('italic')" class="p-1.5 hover:bg-gray-200 rounded" title="ตัวเอียง (Ctrl+I)">
+                <i class="ph ph-text-italic text-lg"></i>
+            </button>
+            <button id="btnUnderline" onclick="toggleTextProp('underline')" class="p-1.5 hover:bg-gray-200 rounded" title="ขีดเส้นใต้ (Ctrl+U)">
+                <i class="ph ph-text-underline text-lg"></i>
+            </button>
+
+            <label class="p-1.5 hover:bg-gray-200 rounded cursor-pointer flex items-center gap-1" title="สีข้อความ">
+                <i class="ph ph-text-aa text-lg"></i>
+                <input id="toolTextColor" type="color" value="#202124" onchange="updateSelectedElementProp('color', this.value)" class="w-4 h-4 cursor-pointer border-0 bg-transparent p-0" />
+            </label>
+
+            <!-- Alignment -->
+            <button onclick="setTextAlign('left')" class="p-1.5 hover:bg-gray-200 rounded" title="จัดชิดซ้าย">
+                <i class="ph ph-text-align-left text-lg"></i>
+            </button>
+            <button onclick="setTextAlign('center')" class="p-1.5 hover:bg-gray-200 rounded" title="จัดกึ่งกลาง">
+                <i class="ph ph-text-align-center text-lg"></i>
+            </button>
+            <button onclick="setTextAlign('right')" class="p-1.5 hover:bg-gray-200 rounded" title="จัดชิดขวา">
+                <i class="ph ph-text-align-right text-lg"></i>
+            </button>
+        </div>
+
+        <div class="h-5 w-[1px] bg-gray-300 mx-1"></div>
+
+        <!-- Slide Level Tools: Background, Layout, Theme, Transition -->
+        <div class="flex items-center space-x-1 text-xs font-medium">
+            <button onclick="openBackgroundModal()" class="px-2.5 py-1.5 hover:bg-gray-200 rounded-md transition">พื้นหลัง</button>
+            <button onclick="toggleRightSidebar('layouts')" class="px-2.5 py-1.5 hover:bg-gray-200 rounded-md transition">เลย์เอาต์</button>
+            <button onclick="toggleRightSidebar('themes')" class="px-2.5 py-1.5 hover:bg-gray-200 rounded-md transition">ธีม</button>
+            <button onclick="toggleRightSidebar('transitions')" class="px-2.5 py-1.5 hover:bg-gray-200 rounded-md transition">การเปลี่ยนสไลด์</button>
+        </div>
+    </div>
+
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- LEFT SIDEBAR: Slide Filmstrip -->
+        <aside class="w-56 bg-white border-r border-gray-200 flex flex-col select-none z-20">
+            <div class="px-3 py-2 border-b border-gray-100 flex items-center justify-between text-xs font-semibold text-gray-500">
+                <span>สไลด์ทั้งหมด (<span id="slideCountBadge">1</span>)</span>
+                <div class="flex items-center space-x-1">
+                    <button onclick="addNewSlide()" class="p-1 hover:bg-gray-100 rounded text-blue-600" title="เพิ่มสไลด์">
+                        <i class="ph-bold ph-plus"></i>
+                    </button>
+                    <button onclick="duplicateCurrentSlide()" class="p-1 hover:bg-gray-100 rounded text-gray-600" title="ทำซ้ำสไลด์">
+                        <i class="ph ph-copy"></i>
+                    </button>
+                    <button onclick="deleteCurrentSlide()" class="p-1 hover:bg-gray-100 rounded text-red-500" title="ลบสไลด์">
+                        <i class="ph ph-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Thumbnails List -->
+            <div id="filmstripContainer" class="flex-1 overflow-y-auto p-3 space-y-3">
+                <!-- Populated dynamically -->
+            </div>
+        </aside>
+
+        <!-- CENTER AREA: Main Slide Stage & Speaker Notes -->
+        <main class="flex-1 flex flex-col bg-[#f1f3f4] overflow-hidden relative">
+            <!-- Canvas Viewport -->
+            <div id="canvasViewport" class="flex-1 overflow-auto flex items-center justify-center p-8 relative" onclick="handleCanvasBackgroundClick(event)">
+                <!-- Scaling Wrapper -->
+                <div id="stageScaleWrapper" class="flex items-center justify-center transition-transform duration-75">
+                    <!-- 960x540 Slide Stage -->
+                    <div id="slideStage" class="slide-stage">
+                        <!-- Grid Overlay -->
+                        <div id="gridOverlay" class=" inset-0 pointer-events-none hidden z-40" 
+                            style="background-image: linear-gradient(to right, rgba(26,115,232,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(26,115,232,0.12) 1px, transparent 1px); background-size: 40px 40px; position: absolute;">
+                        </div>
+                        <!-- Elements Container -->
+                        <div id="elementsContainer" class="w-full h-full relative"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Speaker Notes Drawer -->
+            <div id="speakerNotesPanel" class="h-28 bg-white border-t border-gray-300 flex flex-col z-20">
+                <div class="px-4 py-1 bg-gray-50 border-b border-gray-200 flex items-center justify-between text-xs text-gray-500">
+                    <span class="font-medium flex items-center gap-1.5"><i class="ph ph-Microphone-stage"></i> บันทึกของผู้บรรยาย (สไลด์ที่ <span id="notesSlideNum">1</span>)</span>
+                    <button onclick="toggleSpeakerNotes()" class="hover:text-gray-800"><i class="ph ph-caret-down"></i></button>
+                </div>
+                <textarea id="speakerNotesInput" 
+                    placeholder="คลิกเพื่อเพิ่มบันทึกของผู้บรรยายสำหรับสไลด์นี้..."
+                    oninput="updateSpeakerNotes(this.value)"
+                    class="flex-1 w-full px-4 py-2 text-sm text-gray-700 focus:outline-none resize-none"></textarea>
+            </div>
+        </main>
+
+        <!-- RIGHT SIDEBAR: Themes, Layouts & Transitions -->
+        <aside id="rightSidebar" class="w-72 bg-white border-l border-gray-200 flex flex-col z-20 transition-all duration-200">
+            <!-- Header Tabs -->
+            <div class="px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+                <div class="flex space-x-1 bg-gray-100 p-1 rounded-lg text-xs font-medium">
+                    <button id="tabThemes" onclick="switchRightTab('themes')" class="px-2.5 py-1 rounded-md bg-white shadow-xs text-blue-600">ธีม</button>
+                    <button id="tabLayouts" onclick="switchRightTab('layouts')" class="px-2.5 py-1 rounded-md text-gray-600 hover:text-gray-900">เลย์เอาต์</button>
+                    <button id="tabTransitions" onclick="switchRightTab('transitions')" class="px-2.5 py-1 rounded-md text-gray-600 hover:text-gray-900">เอฟเฟกต์</button>
+                </div>
+                <button onclick="closeRightSidebar()" class="p-1 text-gray-400 hover:text-gray-700 rounded">
+                    <i class="ph ph-x text-base"></i>
+                </button>
+            </div>
+
+            <!-- Panel Content: Themes -->
+            <div id="panelThemes" class="flex-1 overflow-y-auto p-3 space-y-3">
+                <p class="text-xs text-gray-500">เลือกธีมสีและฟอนต์สำหรับสไลด์ทั้งหมดในงานนำเสนอ:</p>
+                <div id="themesGrid" class="grid grid-cols-1 gap-2.5">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <!-- Panel Content: Layouts -->
+            <div id="panelLayouts" class="flex-1 overflow-y-auto p-3 space-y-3 hidden">
+                <p class="text-xs text-gray-500">ปรับโครงสร้างสไลด์ปัจจุบันใหม่:</p>
+                <div id="layoutsGrid" class="grid grid-cols-2 gap-2.5">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <!-- Panel Content: Transitions -->
+            <div id="panelTransitions" class="flex-1 overflow-y-auto p-4 space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">เอฟเฟกต์การเปลี่ยนสไลด์</label>
+                    <select id="transitionSelect" onchange="updateSlideTransition(this.value)" class="w-full text-sm border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500">
+                        <option value="none">ไม่มีเอฟเฟกต์</option>
+                        <option value="fade">ค่อยๆ ปรากฏ (Fade)</option>
+                        <option value="slide">เลื่อนจากขวา (Slide)</option>
+                        <option value="zoom">ซูมเข้า (Zoom)</option>
+                    </select>
+                </div>
+                <button onclick="applyTransitionToAll()" class="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold transition">
+                    ใช้เอฟเฟกต์นี้กับสไลด์ทั้งหมด
+                </button>
+
+                <hr class="border-gray-200">
+
+                <div>
+                    <h4 class="text-xs font-semibold text-gray-700 mb-2">คุณสมบัติวัตถุที่เลือก</h4>
+                    <div id="selectedPropsInspector" class="text-xs text-gray-500 space-y-2">
+                        คลิกเลือกวัตถุบนสไลด์เพื่อปรับตำแหน่งและขนาดแบบละเอียด
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    
+    <!-- Hidden File Input for Opening .pptx / .json -->
+    <input id="fileOpenInput" type="file" accept=".json,.pptx" class="hidden" onchange="handleFileOpen(event)" />
+
+    <!-- Modal: Change Slide Background -->
+    <div id="backgroundModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-96 p-5 space-y-4">
+            <div class="flex items-center justify-between border-b pb-2">
+                <h3 class="font-semibold text-base">ตั้งค่าพื้นหลังสไลด์</h3>
+                <button onclick="closeBackgroundModal()" class="text-gray-400 hover:text-gray-600"><i class="ph ph-x text-lg"></i></button>
+            </div>
+
+            <div class="space-y-3 text-sm">
+                <div class="flex items-center justify-between">
+                    <span>สีพื้นหลัง</span>
+                    <input id="bgModalColor" type="color" value="#ffffff" onchange="setSlideBackgroundColor(this.value)" class="w-10 h-8 cursor-pointer rounded border" />
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">หรือใส่ลิงก์รูปภาพพื้นหลัง (URL)</label>
+                    <div class="flex gap-2">
+                        <input id="bgModalImageUrl" type="text" placeholder="https://..." class="flex-1 border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500" />
+                        <button onclick="setSlideBackgroundImageUrl()" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">ตั้งค่า</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">หรืออัปโหลดรูปพื้นหลังจากเครื่อง</label>
+                    <input type="file" accept="image/*" onchange="handleSlideBgFileUpload(event)" class="text-xs w-full" />
+                </div>
+
+                <button onclick="clearSlideBackgroundImage()" class="text-xs text-red-600 hover:underline">ลบรูปภาพพื้นหลัง</button>
+            </div>
+
+            <div class="flex justify-between pt-3 border-t">
+                <button onclick="applyBackgroundToAllSlides()" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium">ใช้กับทุกสไลด์</button>
+                <button onclick="closeBackgroundModal()" class="px-4 py-1.5 bg-[#1a73e8] text-white rounded text-xs font-medium">เสร็จสิ้น</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Insert Image -->
+    <div id="imageModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl w-96 p-5 space-y-4">
+            <div class="flex items-center justify-between border-b pb-2">
+                <h3 class="font-semibold text-base">แทรกรูปภาพลงในสไลด์</h3>
+                <button onclick="closeImageModal()" class="text-gray-400 hover:text-gray-600"><i class="ph ph-x text-lg"></i></button>
+            </div>
+
+            <div class="space-y-4 text-sm">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition">
+                    <i class="ph ph-upload-simple text-2xl text-blue-600 mb-1"></i>
+                    <p class="text-xs text-gray-600 mb-2">อัปโหลดรูปภาพจากคอมพิวเตอร์</p>
+                    <input type="file" accept="image/*" onchange="handleInsertImageUpload(event)" class="text-xs w-full cursor-pointer" />
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-xs text-gray-500">หรือแทรกด้วย URL ของรูปภาพ</label>
+                    <div class="flex gap-2">
+                        <input id="insertImageUrlInput" type="text" placeholder="https://images.unsplash.com/..." class="flex-1 border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500" />
+                        <button onclick="insertImageFromUrl()" class="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">แทรก</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN PRESENTATION OVERLAY -->
+    <div id="presentationOverlay" class="fixed inset-0 bg-black hidden flex-col items-center justify-center z-[2000] select-none overflow-hidden">
+        <!-- Laser Pointer Red Dot -->
+        <div id="laserDot"></div>
+
+        <!-- Presentation Stage Wrapper -->
+        <div id="presentStageWrapper" class="relative flex items-center justify-center w-full h-full" onclick="nextSlidePresentation()">
+            <div id="presentSlideContainer" class="slide-stage shadow-2xl transition-all duration-300"></div>
+        </div>
+
+        <!-- Floating Bottom Presentation Controls -->
+        <div class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900/85 backdrop-blur-md text-white px-4 py-2 rounded-full flex items-center space-x-3 shadow-2xl border border-white/15 opacity-25 hover:opacity-100 transition-opacity duration-200 z-[2010]" onclick="event.stopPropagation()">
+            <button onclick="prevSlidePresentation()" class="p-1.5 hover:bg-white/20 rounded-full" title="สไลด์ก่อนหน้า (ลูกศรซ้าย)">
+                <i class="ph-bold ph-caret-left text-lg"></i>
+            </button>
+            <span id="presentSlideCounter" class="text-sm font-medium min-w-[60px] text-center">1 / 1</span>
+            <button onclick="nextSlidePresentation()" class="p-1.5 hover:bg-white/20 rounded-full" title="สไลด์ถัดไป (ลูกศรขวา / Spacebar)">
+                <i class="ph-bold ph-caret-right text-lg"></i>
+            </button>
+            <div class="h-4 w-[1px] bg-white/20"></div>
+            <button id="laserBtn" onclick="toggleLaserPointer()" class="p-1.5 hover:bg-white/20 rounded-full flex items-center gap-1 text-xs px-2" title="ตัวชี้เลเซอร์ (กด L)">
+                <i class="ph-fill ph-record text-red-500 text-base"></i>
+                <span>เลเซอร์</span>
+            </button>
+            <button onclick="toggleFullscreenElement()" class="p-1.5 hover:bg-white/20 rounded-full" title="สลับเต็มหน้าจอ">
+                <i class="ph ph-corners-out text-lg"></i>
+            </button>
+            <button onclick="exitPresentation()" class="px-3 py-1 bg-red-600 hover:bg-red-700 rounded-full text-xs font-medium" title="ออกจากการนำเสนอ (Esc)">
+                ออก (Esc)
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading / Exporting Overlay & Toast Notification -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-[3000]">
+        <div class="bg-white rounded-xl p-6 shadow-2xl flex flex-col items-center space-y-3">
+            <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p id="loadingMessage" class="text-sm font-medium text-gray-700">กำลังประมวลผลไฟล์...</p>
+        </div>
+    </div>
+
+    <div id="toastNotification" class="fixed bottom-5 right-5 bg-gray-900 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none z-[3000]">
+        <i class="ph-fill ph-check-circle text-emerald-400 text-lg"></i>
+        <span id="toastText">บันทึกเรียบร้อย</span>
+    </div>
+
+    <!-- Offscreen Container used for clean PDF / Image rendering -->
+    <div id="offscreenRenderHost" class="fixed -left-[9999px] -top-[9999px] pointer-events-none"></div>
+
+    <script>
+        // Predefined Themes
+        const THEMES = [
+            { id: 'light', name: 'คลาสสิกสว่าง (Simple Light)', bg: '#ffffff', titleColor: '#202124', textColor: '#3c4043', accent: '#1a73e8', shapeFill: '#e8f0fe' },
+            { id: 'dark', name: 'โมเดิร์นดาร์ก (Modern Dark)', bg: '#1e293b', titleColor: '#f8fafc', textColor: '#cbd5e1', accent: '#38bdf8', shapeFill: '#334155' },
+            { id: 'corporate', name: 'บลูอิสระ (Corporate Blue)', bg: '#f0f7ff', titleColor: '#0f172a', textColor: '#334155', accent: '#2563eb', shapeFill: '#dbeafe' },
+            { id: 'emerald', name: 'ธรรมชาติเขียวมรกต (Emerald)', bg: '#ecfdf5', titleColor: '#064e3b', textColor: '#047857', accent: '#10b981', shapeFill: '#d1fae5' },
+            { id: 'sunset', name: 'อบอุ่นยามเย็น (Warm Sunset)', bg: '#fff7ed', titleColor: '#7c2d12', textColor: '#9a3412', accent: '#f97316', shapeFill: '#ffedd5' },
+            { id: 'royal', name: 'รอยัลเพอร์เพิล (Royal Purple)', bg: '#2e1065', titleColor: '#faf5ff', textColor: '#e9d5ff', accent: '#c084fc', shapeFill: '#4c1d95' }
+        ];
+
+        // Predefined Layouts
+        const LAYOUTS = [
+            { id: 'title', name: 'สไลด์ชื่อเรื่อง', icon: 'ph-subtitles' },
+            { id: 'titleBody', name: 'หัวข้อและเนื้อหา', icon: 'ph-article' },
+            { id: 'twoCol', name: 'เนื้อหา 2 คอลัมน์', icon: 'ph-columns' },
+            { id: 'section', name: 'ส่วนหัวข้อใหญ่', icon: 'ph-text-h-one' },
+            { id: 'caption', name: 'จุดเด่นและคำอธิบาย', icon: 'ph-Sidebar' },
+            { id: 'blank', name: 'สไลด์ว่างเปล่า', icon: 'ph-rectangle' }
+        ];
+
+        // Global Application State
+        let state = {
+            title: 'งานนำเสนอไม่มีชื่อ',
+            starred: false,
+            zoom: 0.85,
+            showGrid: false,
+            currentSlideIndex: 0,
+            selectedElementId: null,
+            editingElementId: null,
+            isPresenting: false,
+            laserActive: false,
+            slides: []
+        };
+
+        // History Stacks for Undo / Redo
+        let undoStack = [];
+        let redoStack = [];
+        const MAX_HISTORY = 35;
+
+        // Drag & Resize Interaction State
+        let interaction = {
+            mode: null, // 'drag' | 'resize'
+            handle: null,
+            startX: 0,
+            startY: 0,
+            initialX: 0,
+            initialY: 0,
+            initialW: 0,
+            initialH: 0,
+            moved: false
+        };
+
+        function uid() {
+            return 'el_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+        }
+
+        function createSlideByLayout(layoutId = 'title', theme = THEMES[0]) {
+            const elements = [];
+            if (layoutId === 'title') {
+                elements.push({
+                    id: uid(), type: 'text', x: 80, y: 160, w: 800, h: 110,
+                    text: 'คลิกเพื่อเพิ่มชื่อเรื่องงานนำเสนอ',
+                    fontSize: 44, fontFamily: 'Sarabun', color: theme.titleColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: true, italic: false, underline: false, align: 'center'
+                });
+                elements.push({
+                    id: uid(), type: 'text', x: 160, y: 285, w: 640, h: 70,
+                    text: 'คลิกเพื่อเพิ่มคำบรรยายหรือชื่อผู้นำเสนอ',
+                    fontSize: 22, fontFamily: 'Sarabun', color: theme.textColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: false, italic: false, underline: false, align: 'center'
+                });
+            } else if (layoutId === 'titleBody') {
+                elements.push({
+                    id: uid(), type: 'text', x: 60, y: 40, w: 840, h: 70,
+                    text: 'คลิกเพื่อเพิ่มหัวข้อสไลด์',
+                    fontSize: 34, fontFamily: 'Sarabun', color: theme.titleColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: true, italic: false, underline: false, align: 'left'
+                });
+                elements.push({
+                    id: uid(), type: 'text', x: 60, y: 130, w: 840, h: 350,
+                    text: '• คลิกเพื่อเพิ่มประเด็นสำคัญข้อที่ 1\n• รองรับการแก้ไขข้อความ ย่อ-ขยาย และเปลี่ยนสีได้อย่างอิสระ\n• ส่งออกเป็นไฟล์ PowerPoint (.pptx) และ PDF (.pdf) ได้ทันที',
+                    fontSize: 22, fontFamily: 'Sarabun', color: theme.textColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: false, italic: false, underline: false, align: 'left'
+                });
+            } else if (layoutId === 'twoCol') {
+                elements.push({
+                    id: uid(), type: 'text', x: 60, y: 40, w: 840, h: 65,
+                    text: 'เปรียบเทียบข้อมูล 2 คอลัมน์',
+                    fontSize: 32, fontFamily: 'Sarabun', color: theme.titleColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: true, italic: false, underline: false, align: 'left'
+                });
+                elements.push({
+                    id: uid(), type: 'text', x: 60, y: 130, w: 400, h: 350,
+                    text: 'คอลัมน์ซ้าย\n• รายละเอียดส่วนที่ 1\n• ข้อมูลสนับสนุนและสถิติ',
+                    fontSize: 20, fontFamily: 'Sarabun', color: theme.textColor,
+                    fillColor: theme.shapeFill, borderColor: 'transparent', borderWidth: 0,
+                    bold: false, italic: false, underline: false, align: 'left'
+                });
+                elements.push({
+                    id: uid(), type: 'text', x: 500, y: 130, w: 400, h: 350,
+                    text: 'คอลัมน์ขวา\n• รายละเอียดส่วนที่ 2\n• แนวทางการดำเนินงานต่อ',
+                    fontSize: 20, fontFamily: 'Sarabun', color: theme.textColor,
+                    fillColor: theme.shapeFill, borderColor: 'transparent', borderWidth: 0,
+                    bold: false, italic: false, underline: false, align: 'left'
+                });
+            } else if (layoutId === 'section') {
+                elements.push({
+                    id: uid(), type: 'text', x: 80, y: 210, w: 800, h: 120,
+                    text: 'ส่วนหัวข้อสำคัญ (Section Header)',
+                    fontSize: 48, fontFamily: 'Sarabun', color: theme.accent,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: true, italic: false, underline: false, align: 'center'
+                });
+            } else if (layoutId === 'caption') {
+                elements.push({
+                    id: uid(), type: 'shape', shapeType: 'roundRect', x: 60, y: 80, w: 340, h: 380,
+                    text: 'หัวข้อหลัก',
+                    fontSize: 32, fontFamily: 'Sarabun', color: '#ffffff',
+                    fillColor: theme.accent, borderColor: 'transparent', borderWidth: 0,
+                    bold: true, italic: false, underline: false, align: 'center'
+                });
+                elements.push({
+                    id: uid(), type: 'text', x: 440, y: 80, w: 460, h: 380,
+                    text: 'คำอธิบายรายละเอียดเชิงลึก\n\nคุณสามารถเพิ่มกล่องข้อความ รูปภาพ หรือรูปทรงเรขาคณิตเพิ่มเติมได้จากแถบเครื่องมือด้านบน',
+                    fontSize: 22, fontFamily: 'Sarabun', color: theme.textColor,
+                    fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                    bold: false, italic: false, underline: false, align: 'left'
+                });
+            }
+
+            return {
+                id: 'slide_' + uid(),
+                background: theme.bg,
+                backgroundImage: '',
+                transition: 'fade',
+                notes: '',
+                elements: elements
+            };
+        }
+
+        function createDefaultStarterDeck() {
+            state.title = 'งานนำเสนอ Slides Clone';
+            state.slides = [
+                {
+                    id: 'slide_' + uid(),
+                    background: '#ffffff',
+                    backgroundImage: '',
+                    transition: 'fade',
+                    notes: 'สวัสดีผู้ฟังทุกท่าน นี่คือสไลด์เปิดงานนำเสนอ สามารถกดปุ่ม "นำเสนอ" มุมขวาบนเพื่อแสดงผลเต็มจอได้ทันที',
+                    elements: [
+                        {
+                            id: uid(), type: 'shape', shapeType: 'roundRect', x: 60, y: 55, w: 840, h: 430,
+                            text: '', fontSize: 20, fontFamily: 'Sarabun', color: '#202124',
+                            fillColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 2,
+                            bold: false, italic: false, underline: false, align: 'center'
+                        },
+                        {
+                            id: uid(), type: 'shape', shapeType: 'ellipse', x: 730, y: 90, w: 120, h: 120,
+                            text: 'SPA', fontSize: 28, fontFamily: 'Kanit', color: '#ffffff',
+                            fillColor: '#fbbc04', borderColor: '#ffffff', borderWidth: 4,
+                            bold: true, italic: false, underline: false, align: 'center'
+                        },
+                        {
+                            id: uid(), type: 'text', x: 100, y: 130, w: 620, h: 120,
+                            text: 'ยินดีต้อนรับสู่ Slides Clone',
+                            fontSize: 42, fontFamily: 'Kanit', color: '#1a73e8',
+                            fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                            bold: true, italic: false, underline: false, align: 'left'
+                        },
+                        {
+                            id: uid(), type: 'text', x: 100, y: 255, w: 740, h: 160,
+                            text: '• สร้างและแก้ไขสไลด์แบบ WYSIWYG (ลากวาง, ย่อ-ขยาย, จัดรูปแบบอักษร)\n• ดาวน์โหลดเป็นไฟล์ PowerPoint (.pptx), เอกสาร PDF (.pdf), รูปภาพ (.png) หรือ JSON\n• รองรับการเปิดไฟล์ .pptx และ .json พร้อมโหมดนำเสนอเต็มหน้าจอและเลเซอร์พอยเตอร์',
+                            fontSize: 21, fontFamily: 'Sarabun', color: '#334155',
+                            fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                            bold: false, italic: false, underline: false, align: 'left'
+                        }
+                    ]
+                },
+                {
+                    id: 'slide_' + uid(),
+                    background: '#f0f7ff',
+                    backgroundImage: '',
+                    transition: 'slide',
+                    notes: 'สไลด์ที่ 2 แสดงความสามารถด้านรูปทรงและการส่งออกไฟล์',
+                    elements: [
+                        {
+                            id: uid(), type: 'text', x: 60, y: 40, w: 840, h: 65,
+                            text: 'ฟีเจอร์ครบครันสำหรับการนำเสนอยุคใหม่',
+                            fontSize: 34, fontFamily: 'Kanit', color: '#0f172a',
+                            fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                            bold: true, italic: false, underline: false, align: 'left'
+                        },
+                        {
+                            id: uid(), type: 'shape', shapeType: 'roundRect', x: 60, y: 130, w: 260, h: 330,
+                            text: '1. ออกแบบอิสระ\n\nแทรกข้อความ รูปภาพ รูปทรงเรขาคณิต และปรับแต่งสีสันได้ตามต้องการ',
+                            fontSize: 20, fontFamily: 'Sarabun', color: '#1e3a8a',
+                            fillColor: '#dbeafe', borderColor: '#93c5fd', borderWidth: 2,
+                            bold: false, italic: false, underline: false, align: 'center'
+                        },
+                        {
+                            id: uid(), type: 'shape', shapeType: 'roundRect', x: 350, y: 130, w: 260, h: 330,
+                            text: '2. เซฟเป็น PPTX & PDF\n\nส่งออกเป็นไฟล์ .pptx แท้สำหรับเปิดใน PowerPoint หรือเซฟเป็น .pdf คมชัด',
+                            fontSize: 20, fontFamily: 'Sarabun', color: '#7c2d12',
+                            fillColor: '#ffedd5', borderColor: '#fdba74', borderWidth: 2,
+                            bold: false, italic: false, underline: false, align: 'center'
+                        },
+                        {
+                            id: uid(), type: 'shape', shapeType: 'roundRect', x: 640, y: 130, w: 260, h: 330,
+                            text: '3. นำเสนอทันที\n\nกดปุ่ม "นำเสนอ" หรือปุ่ม F5 พร้อมใช้งานตัวชี้เลเซอร์สีแดง',
+                            fontSize: 20, fontFamily: 'Sarabun', color: '#064e3b',
+                            fillColor: '#d1fae5', borderColor: '#6ee7b7', borderWidth: 2,
+                            bold: false, italic: false, underline: false, align: 'center'
+                        }
+                    ]
+                }
+            ];
+            state.currentSlideIndex = 0;
+            state.selectedElementId = null;
+        }
+
+        function getCurrentSlide() {
+            return state.slides[state.currentSlideIndex];
+        }
+
+        function getSelectedElement() {
+            const slide = getCurrentSlide();
+            if (!slide || !state.selectedElementId) return null;
+            return slide.elements.find(e => e.id === state.selectedElementId) || null;
+        }
+
+        function renderShapeSVG(el) {
+            const fill = el.fillColor === 'transparent' ? 'none' : (el.fillColor || '#e8f0fe');
+            const stroke = el.borderWidth > 0 ? (el.borderColor || '#1a73e8') : 'none';
+            const sw = el.borderWidth || 0;
+
+            if (el.shapeType === 'triangle') {
+                return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full pointer-events-none">
+                    <polygon points="50,3 97,97 3,97" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke" />
+                </svg>`;
+            }
+            if (el.shapeType === 'star') {
+                return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full pointer-events-none">
+                    <polygon points="50,2 63,36 98,36 70,57 81,92 50,70 19,92 30,57 2,36 37,36" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke" />
+                </svg>`;
+            }
+            if (el.shapeType === 'arrowRight') {
+                return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-full pointer-events-none">
+                    <polygon points="2,28 62,28 62,5 98,50 62,95 62,72 2,72" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" vector-effect="non-scaling-stroke" />
+                </svg>`;
+            }
+            return '';
+        }
+
+        function buildElementDOM(el, isEditable = true) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'slide-element';
+            if (isEditable && state.selectedElementId === el.id) {
+                wrapper.classList.add('selected');
+            }
+            if (isEditable && state.editingElementId === el.id) {
+                wrapper.classList.add('editing-text');
+            }
+
+            wrapper.style.left = el.x + 'px';
+            wrapper.style.top = el.y + 'px';
+            wrapper.style.width = el.w + 'px';
+            wrapper.style.height = el.h + 'px';
+            wrapper.dataset.id = el.id;
+
+            // Render specific element content
+            if (el.type === 'line') {
+                wrapper.style.display = 'flex';
+                wrapper.style.alignItems = 'center';
+                const lineBar = document.createElement('div');
+                lineBar.style.width = '100%';
+                lineBar.style.height = Math.max(2, el.borderWidth || 4) + 'px';
+                lineBar.style.backgroundColor = el.borderColor || '#1a73e8';
+                lineBar.style.borderRadius = '2px';
+                wrapper.appendChild(lineBar);
+            } else if (el.type === 'image') {
+                wrapper.style.border = el.borderWidth > 0 ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
+                const img = document.createElement('img');
+                img.src = el.src;
+                img.className = 'w-full h-full object-cover pointer-events-none select-none';
+                img.onerror = function() {
+                    this.src = 'https://placehold.co/600x400/e2e8f0/475569?text=Image+Not+Found';
+                };
+                wrapper.appendChild(img);
+            } else {
+                // Text or Shape
+                const isSvgPolygon = el.type === 'shape' && ['triangle', 'star', 'arrowRight'].includes(el.shapeType);
+
+                if (isSvgPolygon) {
+                    const svgHolder = document.createElement('div');
+                    svgHolder.className = 'absolute inset-0 pointer-events-none';
+                    svgHolder.innerHTML = renderShapeSVG(el);
+                    wrapper.appendChild(svgHolder);
+                } else {
+                    wrapper.style.backgroundColor = el.fillColor || 'transparent';
+                    wrapper.style.border = el.borderWidth > 0 ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
+                    if (el.type === 'shape' && el.shapeType === 'roundRect') {
+                        wrapper.style.borderRadius = '16px';
+                    } else if (el.type === 'shape' && el.shapeType === 'ellipse') {
+                        wrapper.style.borderRadius = '50%';
+                    }
+                }
+
+                const textDiv = document.createElement('div');
+                textDiv.className = 'w-full h-full p-3 relative z-10 flex flex-col outline-none whitespace-pre-wrap break-words overflow-hidden';
+                textDiv.style.justifyContent = el.type === 'shape' ? 'center' : 'flex-start';
+                textDiv.style.fontFamily = el.fontFamily || 'Sarabun';
+                textDiv.style.fontSize = (el.fontSize || 24) + 'px';
+                textDiv.style.color = el.color || '#202124';
+                textDiv.style.fontWeight = el.bold ? '700' : '400';
+                textDiv.style.fontStyle = el.italic ? 'italic' : 'normal';
+                textDiv.style.textDecoration = el.underline ? 'underline' : 'none';
+                textDiv.style.textAlign = el.align || 'left';
+                textDiv.style.lineHeight = '1.35';
+                textDiv.innerText = el.text || '';
+
+                if (isEditable) {
+                    if (state.editingElementId === el.id) {
+                        textDiv.contentEditable = 'true';
+                    }
+                    textDiv.addEventListener('input', () => {
+                        el.text = textDiv.innerText;
+                        renderFilmstrip();
+                    });
+                    textDiv.addEventListener('blur', () => {
+                        if (state.editingElementId === el.id) {
+                            state.editingElementId = null;
+                            wrapper.classList.remove('editing-text');
+                            textDiv.contentEditable = 'false';
+                            saveStateToHistory('แก้ไขข้อความ');
+                        }
+                    });
+                }
+
+                wrapper.appendChild(textDiv);
+            }
+
+            // Attach interactive events and resize handles if editable
+            if (isEditable) {
+                wrapper.addEventListener('mousedown', (e) => handleElementMouseDown(e, el));
+                wrapper.addEventListener('dblclick', (e) => handleElementDoubleClick(e, el, wrapper));
+
+                const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+                handles.forEach(dir => {
+                    const h = document.createElement('div');
+                    h.className = `resize-handle handle-${dir}`;
+                    h.addEventListener('mousedown', (e) => startResizeElement(e, el, dir));
+                    wrapper.appendChild(h);
+                });
+            }
+
+            return wrapper;
+        }
+
+        function renderMainStage() {
+            const slide = getCurrentSlide();
+            if (!slide) return;
+
+            const stage = document.getElementById('slideStage');
+            const container = document.getElementById('elementsContainer');
+            const wrapper = document.getElementById('stageScaleWrapper');
+
+            // Apply zoom scale
+            wrapper.style.transform = `scale(${state.zoom})`;
+            document.getElementById('zoomLabel').innerText = Math.round(state.zoom * 100) + '%';
+
+            // Apply background
+            stage.style.backgroundColor = slide.background || '#ffffff';
+            if (slide.backgroundImage) {
+                stage.style.backgroundImage = `url("${slide.backgroundImage}")`;
+                stage.style.backgroundSize = 'cover';
+                stage.style.backgroundPosition = 'center';
+            } else {
+                stage.style.backgroundImage = 'none';
+            }
+
+            // Clear & Rebuild elements
+            container.innerHTML = '';
+            slide.elements.forEach(el => {
+                container.appendChild(buildElementDOM(el, true));
+            });
+
+            // Sync Speaker Notes & Transition UI
+            document.getElementById('notesSlideNum').innerText = state.currentSlideIndex + 1;
+            document.getElementById('speakerNotesInput').value = slide.notes || '';
+            document.getElementById('transitionSelect').value = slide.transition || 'none';
+
+            syncToolbarWithSelection();
+            renderInspector();
+        }
+
+        function renderFilmstrip() {
+            const list = document.getElementById('filmstripContainer');
+            document.getElementById('slideCountBadge').innerText = state.slides.length;
+            list.innerHTML = '';
+
+            state.slides.forEach((slide, index) => {
+                const item = document.createElement('div');
+                const isActive = index === state.currentSlideIndex;
+                item.className = `flex items-start space-x-2 p-1.5 rounded-lg cursor-pointer transition ${isActive ? 'bg-[#e8f0fe] ring-2 ring-[#1a73e8]' : 'hover:bg-gray-100'}`;
+                item.onclick = () => selectSlide(index);
+
+                // Slide Number
+                const num = document.createElement('span');
+                num.className = `text-xs font-semibold w-4 text-right mt-1 ${isActive ? 'text-[#1a73e8]' : 'text-gray-500'}`;
+                num.innerText = index + 1;
+
+                // Mini Preview Container (160x90 scaled down from 960x540 = scale 0.1666)
+                const thumbOuter = document.createElement('div');
+                thumbOuter.className = 'w-[160px] h-[90px] bg-white rounded border border-gray-300 overflow-hidden relative shadow-2xs flex-shrink-0';
+
+                const miniStage = document.createElement('div');
+                miniStage.style.width = '960px';
+                miniStage.style.height = '540px';
+                miniStage.style.transform = 'scale(0.16666)';
+                miniStage.style.transformOrigin = 'top left';
+                miniStage.style.backgroundColor = slide.background || '#ffffff';
+                if (slide.backgroundImage) {
+                    miniStage.style.backgroundImage = `url("${slide.backgroundImage}")`;
+                    miniStage.style.backgroundSize = 'cover';
+                    miniStage.style.backgroundPosition = 'center';
+                }
+                miniStage.className = 'relative pointer-events-none select-none';
+
+                slide.elements.forEach(el => {
+                    miniStage.appendChild(buildElementDOM(el, false));
+                });
+
+                thumbOuter.appendChild(miniStage);
+                item.appendChild(num);
+                item.appendChild(thumbOuter);
+                list.appendChild(item);
+            });
+        }
+
+        function renderAll() {
+            document.getElementById('presentationTitle').value = state.title;
+            renderMainStage();
+            renderFilmstrip();
+        }
+
+        function syncToolbarWithSelection() {
+            const el = getSelectedElement();
+            if (!el) return;
+
+            if (el.fillColor && el.fillColor !== 'transparent') {
+                document.getElementById('toolFillColor').value = el.fillColor;
+            }
+            if (el.borderColor && el.borderColor !== 'transparent') {
+                document.getElementById('toolBorderColor').value = el.borderColor;
+            }
+            document.getElementById('toolBorderWidth').value = el.borderWidth || 0;
+
+            if (el.fontFamily) document.getElementById('toolFontFamily').value = el.fontFamily;
+            if (el.fontSize) document.getElementById('toolFontSize').value = el.fontSize;
+            if (el.color) document.getElementById('toolTextColor').value = el.color;
+
+            document.getElementById('btnBold').classList.toggle('bg-blue-200', !!el.bold);
+            document.getElementById('btnItalic').classList.toggle('bg-blue-200', !!el.italic);
+            document.getElementById('btnUnderline').classList.toggle('bg-blue-200', !!el.underline);
+        }
+
+        function renderInspector() {
+            const box = document.getElementById('selectedPropsInspector');
+            const el = getSelectedElement();
+            if (!el) {
+                box.innerHTML = `<p class="text-gray-400">คลิกเลือกวัตถุบนสไลด์เพื่อปรับตำแหน่ง (X, Y) และขนาด (W, H)</p>`;
+                return;
+            }
+            box.innerHTML = `
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[11px] text-gray-500">แนวนอน X (px)</label>
+                        <input type="number" value="${Math.round(el.x)}" onchange="updateSelectedGeometry('x', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-gray-500">แนวตั้ง Y (px)</label>
+                        <input type="number" value="${Math.round(el.y)}" onchange="updateSelectedGeometry('y', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-gray-500">ความกว้าง W (px)</label>
+                        <input type="number" value="${Math.round(el.w)}" onchange="updateSelectedGeometry('w', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-gray-500">ความสูง H (px)</label>
+                        <input type="number" value="${Math.round(el.h)}" onchange="updateSelectedGeometry('h', this.value)" class="w-full border rounded px-2 py-1 text-xs">
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateSelectedGeometry(prop, val) {
+            const el = getSelectedElement();
+            if (!el) return;
+            el[prop] = Math.max(10, parseInt(val) || 0);
+            saveStateToHistory('ปรับขนาดวัตถุ');
+            renderAll();
+        }
+
+        function handleElementMouseDown(e, el) {
+            e.stopPropagation();
+
+            // If currently editing text inside this same element, allow cursor placement
+            if (state.editingElementId === el.id) {
+                return;
+            }
+
+            state.selectedElementId = el.id;
+            state.editingElementId = null;
+            renderMainStage();
+
+            interaction.mode = 'drag';
+            interaction.startX = e.clientX;
+            interaction.startY = e.clientY;
+            interaction.initialX = el.x;
+            interaction.initialY = el.y;
+            interaction.moved = false;
+        }
+
+        function handleElementDoubleClick(e, el, wrapper) {
+            e.stopPropagation();
+            if (el.type === 'image' || el.type === 'line') return;
+
+            state.selectedElementId = el.id;
+            state.editingElementId = el.id;
+            wrapper.classList.add('editing-text');
+
+            const textDiv = wrapper.querySelector('div[contenteditable], .whitespace-pre-wrap');
+            if (textDiv) {
+                textDiv.contentEditable = 'true';
+                textDiv.focus();
+            }
+        }
+
+        function startResizeElement(e, el, handleDir) {
+            e.stopPropagation();
+            e.preventDefault();
+            state.selectedElementId = el.id;
+            interaction.mode = 'resize';
+            interaction.handle = handleDir;
+            interaction.startX = e.clientX;
+            interaction.startY = e.clientY;
+            interaction.initialX = el.x;
+            interaction.initialY = el.y;
+            interaction.initialW = el.w;
+            interaction.initialH = el.h;
+            interaction.moved = false;
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if (state.isPresenting && state.laserActive) {
+                const dot = document.getElementById('laserDot');
+                dot.style.left = e.clientX + 'px';
+                dot.style.top = e.clientY + 'px';
+            }
+
+            if (!interaction.mode) return;
+            const el = getSelectedElement();
+            if (!el) return;
+
+            const dx = (e.clientX - interaction.startX) / state.zoom;
+            const dy = (e.clientY - interaction.startY) / state.zoom;
+
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                interaction.moved = true;
+            }
+
+            if (interaction.mode === 'drag') {
+                el.x = Math.round(interaction.initialX + dx);
+                el.y = Math.round(interaction.initialY + dy);
+            } else if (interaction.mode === 'resize') {
+                const dir = interaction.handle;
+                let nx = interaction.initialX;
+                let ny = interaction.initialY;
+                let nw = interaction.initialW;
+                let nh = interaction.initialH;
+
+                if (dir.includes('e')) nw = Math.max(24, interaction.initialW + dx);
+                if (dir.includes('s')) nh = Math.max(20, interaction.initialH + dy);
+                if (dir.includes('w')) {
+                    const possibleW = interaction.initialW - dx;
+                    if (possibleW >= 24) {
+                        nw = possibleW;
+                        nx = interaction.initialX + dx;
+                    }
+                }
+                if (dir.includes('n')) {
+                    const possibleH = interaction.initialH - dy;
+                    if (possibleH >= 20) {
+                        nh = possibleH;
+                        ny = interaction.initialY + dy;
+                    }
+                }
+
+                el.x = Math.round(nx);
+                el.y = Math.round(ny);
+                el.w = Math.round(nw);
+                el.h = Math.round(nh);
+            }
+
+            // Live update active DOM element for smooth 60fps dragging
+            const domEl = document.querySelector(`.slide-element[data-id="${el.id}"]`);
+            if (domEl) {
+                domEl.style.left = el.x + 'px';
+                domEl.style.top = el.y + 'px';
+                domEl.style.width = el.w + 'px';
+                domEl.style.height = el.h + 'px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (interaction.mode) {
+                if (interaction.moved) {
+                    saveStateToHistory('ย้ายหรือย่อขยายวัตถุ');
+                    renderAll();
+                }
+                interaction.mode = null;
+                interaction.handle = null;
+            }
+        });
+
+        function handleCanvasBackgroundClick(e) {
+            if (e.target.id === 'canvasViewport' || e.target.id === 'stageScaleWrapper' || e.target.id === 'elementsContainer' || e.target.id === 'slideStage') {
+                state.selectedElementId = null;
+                state.editingElementId = null;
+                renderMainStage();
+            }
+        }
+
+        function selectSlide(index) {
+            state.currentSlideIndex = index;
+            state.selectedElementId = null;
+            state.editingElementId = null;
+            renderAll();
+        }
+
+        function addNewSlide(layoutId = 'titleBody') {
+            const newSlide = createSlideByLayout(layoutId, THEMES[0]);
+            state.slides.splice(state.currentSlideIndex + 1, 0, newSlide);
+            state.currentSlideIndex++;
+            state.selectedElementId = null;
+            saveStateToHistory('เพิ่มสไลด์ใหม่');
+            renderAll();
+            showToast('เพิ่มสไลด์ใหม่แล้ว');
+        }
+
+        function duplicateCurrentSlide() {
+            const curr = getCurrentSlide();
+            if (!curr) return;
+            const copy = JSON.parse(JSON.stringify(curr));
+            copy.id = 'slide_' + uid();
+            copy.elements.forEach(el => el.id = uid());
+            state.slides.splice(state.currentSlideIndex + 1, 0, copy);
+            state.currentSlideIndex++;
+            saveStateToHistory('ทำซ้ำสไลด์');
+            renderAll();
+            showToast('ทำซ้ำสไลด์เรียบร้อย');
+        }
+
+        function deleteCurrentSlide() {
+            if (state.slides.length <= 1) {
+                showToast('ต้องมีสไลด์อย่างน้อย 1 หน้าในงานนำเสนอ');
+                return;
+            }
+            state.slides.splice(state.currentSlideIndex, 1);
+            if (state.currentSlideIndex >= state.slides.length) {
+                state.currentSlideIndex = state.slides.length - 1;
+            }
+            state.selectedElementId = null;
+            saveStateToHistory('ลบสไลด์');
+            renderAll();
+            showToast('ลบสไลด์แล้ว');
+        }
+
+        function moveSlide(dir) {
+            const idx = state.currentSlideIndex;
+            const target = idx + dir;
+            if (target < 0 || target >= state.slides.length) return;
+            const temp = state.slides[idx];
+            state.slides[idx] = state.slides[target];
+            state.slides[target] = temp;
+            state.currentSlideIndex = target;
+            saveStateToHistory('ย้ายลำดับสไลด์');
+            renderAll();
+        }
+
+        function addTextBox() {
+            const slide = getCurrentSlide();
+            const newEl = {
+                id: uid(), type: 'text',
+                x: 200, y: 180, w: 450, h: 90,
+                text: 'คลิกสองครั้งเพื่อพิมพ์ข้อความ...',
+                fontSize: 26, fontFamily: 'Sarabun', color: '#202124',
+                fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                bold: false, italic: false, underline: false, align: 'left'
+            };
+            slide.elements.push(newEl);
+            state.selectedElementId = newEl.id;
+            saveStateToHistory('แทรกกล่องข้อความ');
+            renderAll();
+        }
+
+        function addShape(shapeType = 'rect') {
+            const slide = getCurrentSlide();
+            const newEl = {
+                id: uid(), type: 'shape', shapeType: shapeType,
+                x: 320, y: 160, w: 240, h: 160,
+                text: 'ข้อความ',
+                fontSize: 22, fontFamily: 'Sarabun', color: '#1e293b',
+                fillColor: '#cfe2ff', borderColor: '#1a73e8', borderWidth: 2,
+                bold: true, italic: false, underline: false, align: 'center'
+            };
+            slide.elements.push(newEl);
+            state.selectedElementId = newEl.id;
+            saveStateToHistory('แทรกรูปร่าง');
+            renderAll();
+        }
+
+        function addLine() {
+            const slide = getCurrentSlide();
+            const newEl = {
+                id: uid(), type: 'line',
+                x: 220, y: 260, w: 400, h: 20,
+                borderColor: '#1a73e8', borderWidth: 4
+            };
+            slide.elements.push(newEl);
+            state.selectedElementId = newEl.id;
+            saveStateToHistory('แทรกเส้นตรง');
+            renderAll();
+        }
+
+        function updateSelectedElementProp(prop, value) {
+            const el = getSelectedElement();
+            if (!el) {
+                showToast('กรุณาคลิกเลือกวัตถุบนสไลด์ก่อนปรับแต่ง');
+                return;
+            }
+            el[prop] = value;
+            saveStateToHistory('ปรับแต่งรูปแบบวัตถุ');
+            renderAll();
+        }
+
+        function stepFontSize(delta) {
+            const el = getSelectedElement();
+            if (!el) return;
+            el.fontSize = Math.max(8, Math.min(200, (el.fontSize || 24) + delta));
+            saveStateToHistory('เปลี่ยนขนาดตัวอักษร');
+            renderAll();
+        }
+
+        function toggleTextProp(prop) {
+            const el = getSelectedElement();
+            if (!el) return;
+            el[prop] = !el[prop];
+            saveStateToHistory('เปลี่ยนสไตล์ตัวอักษร');
+            renderAll();
+        }
+
+        function setTextAlign(align) {
+            const el = getSelectedElement();
+            if (!el) return;
+            el.align = align;
+            saveStateToHistory('จัดแนวข้อความ');
+            renderAll();
+        }
+
+        function duplicateSelectedElement() {
+            const el = getSelectedElement();
+            if (!el) return;
+            const copy = JSON.parse(JSON.stringify(el));
+            copy.id = uid();
+            copy.x += 25;
+            copy.y += 25;
+            getCurrentSlide().elements.push(copy);
+            state.selectedElementId = copy.id;
+            saveStateToHistory('ทำซ้ำวัตถุ');
+            renderAll();
+        }
+
+        function deleteSelectedElement() {
+            const slide = getCurrentSlide();
+            if (!slide || !state.selectedElementId) return;
+            slide.elements = slide.elements.filter(e => e.id !== state.selectedElementId);
+            state.selectedElementId = null;
+            state.editingElementId = null;
+            saveStateToHistory('ลบวัตถุ');
+            renderAll();
+        }
+
+        function changeLayerOrder(direction) {
+            const slide = getCurrentSlide();
+            const el = getSelectedElement();
+            if (!slide || !el) return;
+            const idx = slide.elements.findIndex(e => e.id === el.id);
+            if (idx === -1) return;
+            slide.elements.splice(idx, 1);
+            if (direction === 'front') {
+                slide.elements.push(el);
+            } else {
+                slide.elements.unshift(el);
+            }
+            saveStateToHistory('เปลี่ยนลำดับชั้นวัตถุ');
+            renderAll();
+        }
+
+        function centerElementOnSlide(axis) {
+            const el = getSelectedElement();
+            if (!el) return;
+            if (axis === 'horizontal') {
+                el.x = Math.round((960 - el.w) / 2);
+            } else {
+                el.y = Math.round((540 - el.h) / 2);
+            }
+            saveStateToHistory('จัดกึ่งกลางวัตถุ');
+            renderAll();
+        }
+
+        function initRightSidebarContent() {
+            // Populate Themes
+            const themesGrid = document.getElementById('themesGrid');
+            themesGrid.innerHTML = '';
+            THEMES.forEach(theme => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full p-2.5 rounded-xl border border-gray-200 hover:border-blue-500 flex items-center justify-between transition shadow-2xs';
+                btn.style.backgroundColor = theme.bg;
+                btn.onclick = () => applyThemeToPresentation(theme);
+                btn.innerHTML = `
+                    <div class="text-left">
+                        <div class="text-sm font-bold" style="color:${theme.titleColor}">${theme.name}</div>
+                        <div class="text-xs" style="color:${theme.textColor}">ตัวอย่างข้อความและสีเน้น</div>
+                    </div>
+                    <div class="w-6 h-6 rounded-full border border-white shadow" style="background-color:${theme.accent}"></div>
+                `;
+                themesGrid.appendChild(btn);
+            });
+
+            // Populate Layouts
+            const layoutsGrid = document.getElementById('layoutsGrid');
+            layoutsGrid.innerHTML = '';
+            LAYOUTS.forEach(lay => {
+                const btn = document.createElement('button');
+                btn.className = 'p-3 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50/40 flex flex-col items-center gap-1.5 text-xs text-gray-700 transition';
+                btn.onclick = () => applyLayoutToCurrentSlide(lay.id);
+                btn.innerHTML = `
+                    <i class="ph ${lay.icon} text-2xl text-blue-600"></i>
+                    <span class="font-medium text-center">${lay.name}</span>
+                `;
+                layoutsGrid.appendChild(btn);
+            });
+        }
+
+        function applyThemeToPresentation(theme) {
+            state.slides.forEach(slide => {
+                slide.background = theme.bg;
+                slide.elements.forEach(el => {
+                    if (el.type === 'text') {
+                        el.color = el.fontSize >= 30 ? theme.titleColor : theme.textColor;
+                    } else if (el.type === 'shape') {
+                        el.fillColor = theme.shapeFill;
+                        el.color = theme.titleColor;
+                        el.borderColor = theme.accent;
+                    }
+                });
+            });
+            saveStateToHistory('เปลี่ยนธีมงานนำเสนอ');
+            renderAll();
+            showToast(`ใช้ธีม "${theme.name}" เรียบร้อย`);
+        }
+
+        function applyLayoutToCurrentSlide(layoutId) {
+            const newTemplate = createSlideByLayout(layoutId, THEMES[0]);
+            const curr = getCurrentSlide();
+            curr.elements = newTemplate.elements;
+            state.selectedElementId = null;
+            saveStateToHistory('เปลี่ยนเลย์เอาต์สไลด์');
+            renderAll();
+            showToast('เปลี่ยนเลย์เอาต์สไลด์แล้ว');
+        }
+
+        function switchRightTab(tab) {
+            ['themes', 'layouts', 'transitions'].forEach(t => {
+                document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
+                const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+                if (t === tab) {
+                    btn.className = 'px-2.5 py-1 rounded-md bg-white shadow-xs text-blue-600';
+                } else {
+                    btn.className = 'px-2.5 py-1 rounded-md text-gray-600 hover:text-gray-900';
+                }
+            });
+        }
+
+        function toggleRightSidebar(tab) {
+            const sb = document.getElementById('rightSidebar');
+            sb.classList.remove('hidden');
+            if (tab) switchRightTab(tab);
+        }
+
+        function closeRightSidebar() {
+            document.getElementById('rightSidebar').classList.add('hidden');
+        }
+
+        // Background Modal Functions
+        function openBackgroundModal() {
+            const slide = getCurrentSlide();
+            document.getElementById('bgModalColor').value = slide.background || '#ffffff';
+            document.getElementById('bgModalImageUrl').value = slide.backgroundImage || '';
+            const modal = document.getElementById('backgroundModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeBackgroundModal() {
+            const modal = document.getElementById('backgroundModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function setSlideBackgroundColor(color) {
+            getCurrentSlide().background = color;
+            saveStateToHistory('เปลี่ยนสีพื้นหลัง');
+            renderAll();
+        }
+
+        function setSlideBackgroundImageUrl() {
+            const url = document.getElementById('bgModalImageUrl').value.trim();
+            if (!url) return;
+            getCurrentSlide().backgroundImage = url;
+            saveStateToHistory('ตั้งค่ารูปพื้นหลัง');
+            renderAll();
+            showToast('ตั้งค่ารูปภาพพื้นหลังแล้ว');
+        }
+
+        function handleSlideBgFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                getCurrentSlide().backgroundImage = ev.target.result;
+                saveStateToHistory('อัปโหลดรูปพื้นหลัง');
+                renderAll();
+                showToast('อัปโหลดรูปพื้นหลังสำเร็จ');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearSlideBackgroundImage() {
+            getCurrentSlide().backgroundImage = '';
+            document.getElementById('bgModalImageUrl').value = '';
+            saveStateToHistory('ลบรูปพื้นหลัง');
+            renderAll();
+        }
+
+        function applyBackgroundToAllSlides() {
+            const curr = getCurrentSlide();
+            state.slides.forEach(s => {
+                s.background = curr.background;
+                s.backgroundImage = curr.backgroundImage;
+            });
+            saveStateToHistory('ใช้พื้นหลังกับทุกสไลด์');
+            renderAll();
+            showToast('ใช้พื้นหลังนี้กับสไลด์ทั้งหมดแล้ว');
+        }
+
+        // Image Modal Functions
+        function openImageModal() {
+            const modal = document.getElementById('imageModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeImageModal() {
+            const modal = document.getElementById('imageModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function insertImageElement(srcUrl) {
+            const slide = getCurrentSlide();
+            const newEl = {
+                id: uid(), type: 'image',
+                x: 260, y: 120, w: 420, h: 280,
+                src: srcUrl,
+                borderColor: '#1a73e8', borderWidth: 0
+            };
+            slide.elements.push(newEl);
+            state.selectedElementId = newEl.id;
+            saveStateToHistory('แทรกรูปภาพ');
+            renderAll();
+            closeImageModal();
+        }
+
+        function handleInsertImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                insertImageElement(ev.target.result);
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }
+
+        function insertImageFromUrl() {
+            const url = document.getElementById('insertImageUrlInput').value.trim();
+            if (!url) return;
+            insertImageElement(url);
+            document.getElementById('insertImageUrlInput').value = '';
+        }
+
+        // Undo / Redo & LocalStorage Persistence
+        function saveStateToHistory(actionName = '') {
+            state.title = document.getElementById('presentationTitle').value || 'งานนำเสนอไม่มีชื่อ';
+            const snapshot = JSON.stringify({
+                title: state.title,
+                slides: state.slides,
+                currentSlideIndex: state.currentSlideIndex
+            });
+            undoStack.push(snapshot);
+            if (undoStack.length > MAX_HISTORY) undoStack.shift();
+            redoStack = [];
+
+            try {
+                localStorage.setItem('slides_clone_autosave', snapshot);
+                document.getElementById('saveStatus').innerHTML = `<i class="ph ph-cloud-check text-sm text-emerald-600"></i> บันทึกอัตโนมัติแล้ว`;
+            } catch (err) {
+                console.warn('LocalStorage quota exceeded', err);
+            }
+        }
+
+        function undo() {
+            if (undoStack.length <= 1) {
+                showToast('ไม่มีรายการให้เลิกทำ');
+                return;
+            }
+            const current = undoStack.pop();
+            redoStack.push(current);
+            const prev = JSON.parse(undoStack[undoStack.length - 1]);
+            state.title = prev.title;
+            state.slides = prev.slides;
+            state.currentSlideIndex = Math.min(prev.currentSlideIndex, state.slides.length - 1);
+            state.selectedElementId = null;
+            renderAll();
+        }
+
+        function redo() {
+            if (redoStack.length === 0) {
+                showToast('ไม่มีรายการให้ทำซ้ำ');
+                return;
+            }
+            const next = JSON.parse(redoStack.pop());
+            undoStack.push(JSON.stringify(next));
+            state.title = next.title;
+            state.slides = next.slides;
+            state.currentSlideIndex = Math.min(next.currentSlideIndex, state.slides.length - 1);
+            state.selectedElementId = null;
+            renderAll();
+        }
+
+        function showLoading(msg) {
+            document.getElementById('loadingMessage').innerText = msg;
+            const ov = document.getElementById('loadingOverlay');
+            ov.classList.remove('hidden');
+            ov.classList.add('flex');
+        }
+
+        function hideLoading() {
+            const ov = document.getElementById('loadingOverlay');
+            ov.classList.add('hidden');
+            ov.classList.remove('flex');
+        }
+
+        function cleanHex(colorStr, fallback = '000000') {
+            if (!colorStr || colorStr === 'transparent') return fallback;
+            return colorStr.replace('#', '');
+        }
+
+        // 1. Export Genuine Microsoft PowerPoint (.pptx) using PptxGenJS
+        async function exportToPPTX() {
+            try {
+                showLoading('กำลังสร้างไฟล์ Microsoft PowerPoint (.pptx)...');
+                const pptx = new PptxGenJS();
+                pptx.layout = 'LAYOUT_16x9'; // 10 x 5.625 inches
+                pptx.title = state.title;
+
+                const W_IN = 10;
+                const H_IN = 5.625;
+
+                for (const s of state.slides) {
+                    const pSlide = pptx.addSlide();
+
+                    if (s.background && s.background !== 'transparent') {
+                        pSlide.background = { color: cleanHex(s.background, 'FFFFFF') };
+                    }
+                    if (s.backgroundImage && s.backgroundImage.startsWith('data:image')) {
+                        pSlide.background = { data: s.backgroundImage };
+                    } else if (s.backgroundImage) {
+                        pSlide.background = { path: s.backgroundImage };
+                    }
+
+                    if (s.notes) {
+                        pSlide.addNotes(s.notes);
+                    }
+
+                    for (const el of s.elements) {
+                        const xIn = (el.x / 960) * W_IN;
+                        const yIn = (el.y / 540) * H_IN;
+                        const wIn = (el.w / 960) * W_IN;
+                        const hIn = (el.h / 540) * H_IN;
+
+                        if (el.type === 'text') {
+                            pSlide.addText(el.text || '', {
+                                x: xIn, y: yIn, w: wIn, h: hIn,
+                                fontSize: Math.round((el.fontSize || 24) * 0.75),
+                                fontFace: el.fontFamily || 'Arial',
+                                color: cleanHex(el.color, '202124'),
+                                bold: !!el.bold,
+                                italic: !!el.italic,
+                                underline: !!el.underline,
+                                align: el.align || 'left',
+                                valign: 'top',
+                                fill: el.fillColor && el.fillColor !== 'transparent' ? { color: cleanHex(el.fillColor) } : undefined
+                            });
+                        } else if (el.type === 'shape') {
+                            let shapeMap = pptx.ShapeType.rect;
+                            if (el.shapeType === 'roundRect') shapeMap = pptx.ShapeType.roundRect;
+                            if (el.shapeType === 'ellipse') shapeMap = pptx.ShapeType.ellipse;
+                            if (el.shapeType === 'triangle') shapeMap = pptx.ShapeType.triangle;
+                            if (el.shapeType === 'star') shapeMap = pptx.ShapeType.star5;
+                            if (el.shapeType === 'arrowRight') shapeMap = pptx.ShapeType.rightArrow;
+
+                            pSlide.addText(el.text || '', {
+                                shape: shapeMap,
+                                x: xIn, y: yIn, w: wIn, h: hIn,
+                                fontSize: Math.round((el.fontSize || 22) * 0.75),
+                                fontFace: el.fontFamily || 'Arial',
+                                color: cleanHex(el.color, '202124'),
+                                bold: !!el.bold,
+                                italic: !!el.italic,
+                                align: el.align || 'center',
+                                valign: 'middle',
+                                fill: el.fillColor && el.fillColor !== 'transparent' ? { color: cleanHex(el.fillColor, 'E8F0FE') } : undefined,
+                                line: el.borderWidth > 0 ? { color: cleanHex(el.borderColor, '1A73E8'), width: el.borderWidth } : undefined
+                            });
+                        } else if (el.type === 'line') {
+                            pSlide.addShape(pptx.ShapeType.line, {
+                                x: xIn, y: yIn + hIn / 2, w: wIn, h: 0,
+                                line: { color: cleanHex(el.borderColor, '1A73E8'), width: el.borderWidth || 3 }
+                            });
+                        } else if (el.type === 'image' && el.src) {
+                            const imgOpts = { x: xIn, y: yIn, w: wIn, h: hIn };
+                            if (el.src.startsWith('data:image')) {
+                                imgOpts.data = el.src;
+                            } else {
+                                imgOpts.path = el.src;
+                            }
+                            try {
+                                pSlide.addImage(imgOpts);
+                            } catch (imgErr) {
+                                console.warn('Could not embed external image in PPTX', imgErr);
+                            }
+                        }
+                    }
+                }
+
+                const safeName = (state.title || 'presentation').replace(/[\\/:*?"<>|]/g, '_');
+                await pptx.writeFile({ fileName: `${safeName}.pptx` });
+                hideLoading();
+                showToast('ดาวน์โหลดไฟล์ .pptx สำเร็จ!');
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                showToast('เกิดข้อผิดพลาดในการสร้างไฟล์ .pptx');
+            }
+        }
+
+        // Helper to render any slide cleanly offscreen for PDF / PNG export
+        async function renderSlideToCanvas(slide) {
+            const host = document.getElementById('offscreenRenderHost');
+            host.innerHTML = '';
+
+            const stage = document.createElement('div');
+            stage.style.width = '960px';
+            stage.style.height = '540px';
+            stage.style.position = 'relative';
+            stage.style.overflow = 'hidden';
+            stage.style.backgroundColor = slide.background || '#ffffff';
+            if (slide.backgroundImage) {
+                stage.style.backgroundImage = `url("${slide.backgroundImage}")`;
+                stage.style.backgroundSize = 'cover';
+                stage.style.backgroundPosition = 'center';
+            }
+
+            slide.elements.forEach(el => {
+                stage.appendChild(buildElementDOM(el, false));
+            });
+
+            host.appendChild(stage);
+            const canvas = await html2canvas(stage, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: slide.background || '#ffffff'
+            });
+            host.innerHTML = '';
+            return canvas;
+        }
+
+        // 2. Export Genuine multi-page PDF (.pdf) using jsPDF + html2canvas
+        async function exportToPDF() {
+            try {
+                showLoading('กำลังเรนเดอร์สไลด์ทั้งหมดเป็นไฟล์ PDF (.pdf)...');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'px',
+                    format: [960, 540]
+                });
+
+                for (let i = 0; i < state.slides.length; i++) {
+                    showLoading(`กำลังแปลงสไลด์หน้าที่ ${i + 1} / ${state.slides.length} เป็น PDF...`);
+                    const canvas = await renderSlideToCanvas(state.slides[i]);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    if (i > 0) pdf.addPage([960, 540], 'landscape');
+                    pdf.addImage(imgData, 'JPEG', 0, 0, 960, 540);
+                }
+
+                const safeName = (state.title || 'presentation').replace(/[\\/:*?"<>|]/g, '_');
+                pdf.save(`${safeName}.pdf`);
+                hideLoading();
+                showToast('ดาวน์โหลดไฟล์ .pdf สำเร็จ!');
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                showToast('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF');
+            }
+        }
+
+        // 3. Export Current Slide as PNG or JPEG
+        async function exportCurrentSlideImage(format = 'png') {
+            try {
+                showLoading(`กำลังส่งออกสไลด์ปัจจุบันเป็นรูปภาพ .${format.toUpperCase()}...`);
+                const canvas = await renderSlideToCanvas(getCurrentSlide());
+                const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+                const dataUrl = canvas.toDataURL(mime, 0.95);
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = `${state.title}_slide_${state.currentSlideIndex + 1}.${format === 'jpeg' ? 'jpg' : 'png'}`;
+                a.click();
+                hideLoading();
+                showToast('ส่งออกรูปภาพสไลด์สำเร็จ!');
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                showToast('ไม่สามารถส่งออกรูปภาพได้');
+            }
+        }
+
+        // 4. Export Project JSON (.json)
+        function exportToJSON() {
+            const dataStr = JSON.stringify({
+                version: '1.0',
+                title: state.title,
+                slides: state.slides
+            }, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${state.title || 'presentation'}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('บันทึกไฟล์โครงการ .json แล้ว');
+        }
+
+        // 5. Open / Import .JSON or .PPTX file
+        function triggerFileInput() {
+            document.getElementById('fileOpenInput').click();
+        }
+
+        async function handleFileOpen(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const fileName = file.name.toLowerCase();
+
+            if (fileName.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        if (parsed.slides && Array.isArray(parsed.slides)) {
+                            state.title = parsed.title || file.name.replace('.json', '');
+                            state.slides = parsed.slides;
+                            state.currentSlideIndex = 0;
+                            state.selectedElementId = null;
+                            saveStateToHistory('เปิดไฟล์ .json');
+                            renderAll();
+                            showToast('เปิดไฟล์งานนำเสนอ .json สำเร็จ!');
+                        }
+                    } catch (err) {
+                        showToast('รูปแบบไฟล์ JSON ไม่ถูกต้อง');
+                    }
+                };
+                reader.readAsText(file);
+            } else if (fileName.endsWith('.pptx')) {
+                await importFromPPTXFile(file);
+            } else {
+                showToast('รองรับเฉพาะไฟล์ .pptx และ .json เท่านั้น');
+            }
+            e.target.value = '';
+        }
+
+        // Parse .pptx ZIP structure (slides XML + media images) using JSZip
+        async function importFromPPTXFile(file) {
+            try {
+                showLoading('กำลังอ่านข้อมูลสไลด์จากไฟล์ PowerPoint (.pptx)...');
+                const zip = await JSZip.loadAsync(file);
+                const slideFiles = [];
+
+                zip.folder('ppt/slides').forEach((relativePath, zipEntry) => {
+                    if (relativePath.match(/^slide\d+\.xml$/)) {
+                        const num = parseInt(relativePath.replace(/\D/g, ''), 10);
+                        slideFiles.push({ num, entry: zipEntry });
+                    }
+                });
+
+                slideFiles.sort((a, b) => a.num - b.num);
+
+                if (slideFiles.length === 0) {
+                    hideLoading();
+                    showToast('ไม่พบข้อมูลสไลด์ในไฟล์ .pptx นี้');
+                    return;
+                }
+
+                // Extract media images if any
+                const mediaImages = [];
+                const mediaFolder = zip.folder('ppt/media');
+                if (mediaFolder) {
+                    const mediaEntries = [];
+                    mediaFolder.forEach((relPath, entry) => mediaEntries.push({ relPath, entry }));
+                    for (const item of mediaEntries) {
+                        const ext = item.relPath.split('.').pop().toLowerCase();
+                        if (['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
+                            const base64 = await item.entry.async('base64');
+                            const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+                            mediaImages.push(`data:${mime};base64,${base64}`);
+                        }
+                    }
+                }
+
+                const importedSlides = [];
+                const parser = new DOMParser();
+
+                for (let i = 0; i < slideFiles.length; i++) {
+                    const xmlText = await slideFiles[i].entry.async('string');
+                    const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
+                    const paragraphs = xmlDoc.getElementsByTagName('a:p');
+                    const lines = [];
+
+                    for (let p = 0; p < paragraphs.length; p++) {
+                        const tNodes = paragraphs[p].getElementsByTagName('a:t');
+                        let paraStr = '';
+                        for (let t = 0; t < tNodes.length; t++) {
+                            paraStr += tNodes[t].textContent;
+                        }
+                        if (paraStr.trim()) lines.push(paraStr.trim());
+                    }
+
+                    const elements = [];
+                    if (lines.length > 0) {
+                        // First line as Slide Title
+                        elements.push({
+                            id: uid(), type: 'text', x: 60, y: 45, w: 840, h: 80,
+                            text: lines[0],
+                            fontSize: 34, fontFamily: 'Sarabun', color: '#1a73e8',
+                            fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                            bold: true, italic: false, underline: false, align: 'left'
+                        });
+                    }
+                    if (lines.length > 1) {
+                        // Remaining lines as Slide Body
+                        elements.push({
+                            id: uid(), type: 'text', x: 60, y: 145, w: 840, h: 330,
+                            text: lines.slice(1).map(l => '• ' + l).join('\n'),
+                            fontSize: 22, fontFamily: 'Sarabun', color: '#202124',
+                            fillColor: 'transparent', borderColor: 'transparent', borderWidth: 0,
+                            bold: false, italic: false, underline: false, align: 'left'
+                        });
+                    }
+
+                    // Attach extracted image if corresponding index exists
+                    if (mediaImages[i]) {
+                        elements.push({
+                            id: uid(), type: 'image', x: 560, y: 150, w: 340, h: 240,
+                            src: mediaImages[i], borderColor: '#1a73e8', borderWidth: 0
+                        });
+                    }
+
+                    importedSlides.push({
+                        id: 'slide_' + uid(),
+                        background: '#ffffff',
+                        backgroundImage: '',
+                        transition: 'fade',
+                        notes: `นำเข้าจากไฟล์ ${file.name} (สไลด์ที่ ${i + 1})`,
+                        elements
+                    });
+                }
+
+                state.title = file.name.replace(/\.pptx$/i, '');
+                state.slides = importedSlides;
+                state.currentSlideIndex = 0;
+                state.selectedElementId = null;
+                saveStateToHistory('นำเข้าไฟล์ .pptx');
+                renderAll();
+                hideLoading();
+                showToast(`เปิดไฟล์ "${file.name}" (${importedSlides.length} สไลด์) สำเร็จ!`);
+            } catch (err) {
+                console.error(err);
+                hideLoading();
+                showToast('ไม่สามารถอ่านไฟล์ .pptx นี้ได้');
+            }
+        }
+
+        function startPresentation(startIndex = 0) {
+            state.isPresenting = true;
+            state.currentSlideIndex = startIndex;
+            state.selectedElementId = null;
+            state.editingElementId = null;
+
+            const overlay = document.getElementById('presentationOverlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+
+            if (overlay.requestFullscreen) {
+                overlay.requestFullscreen().catch(() => {});
+            }
+
+            renderPresentationSlide();
+            scalePresentationStage();
+        }
+
+        function scalePresentationStage() {
+            if (!state.isPresenting) return;
+            const container = document.getElementById('presentSlideContainer');
+            const scaleX = window.innerWidth / 960;
+            const scaleY = window.innerHeight / 540;
+            const scale = Math.min(scaleX, scaleY);
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('resize', scalePresentationStage);
+
+        function renderPresentationSlide() {
+            const slide = getCurrentSlide();
+            if (!slide) return;
+
+            const container = document.getElementById('presentSlideContainer');
+            container.innerHTML = '';
+            container.style.backgroundColor = slide.background || '#ffffff';
+            if (slide.backgroundImage) {
+                container.style.backgroundImage = `url("${slide.backgroundImage}")`;
+                container.style.backgroundSize = 'cover';
+                container.style.backgroundPosition = 'center';
+            } else {
+                container.style.backgroundImage = 'none';
+            }
+
+            // Apply transition animation effect
+            container.style.opacity = '1';
+            if (slide.transition === 'fade') {
+                container.animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 350, easing: 'ease-out' });
+            } else if (slide.transition === 'slide') {
+                container.animate(
+                    [{ transform: container.style.transform + ' translateX(120px)', opacity: 0.4 }, { transform: container.style.transform + ' translateX(0px)', opacity: 1 }],
+                    { duration: 350, easing: 'ease-out' }
+                );
+            } else if (slide.transition === 'zoom') {
+                container.animate(
+                    [{ opacity: 0.3, filter: 'blur(4px)' }, { opacity: 1, filter: 'blur(0px)' }],
+                    { duration: 350, easing: 'ease-out' }
+                );
+            }
+
+            slide.elements.forEach(el => {
+                container.appendChild(buildElementDOM(el, false));
+            });
+
+            document.getElementById('presentSlideCounter').innerText = `${state.currentSlideIndex + 1} / ${state.slides.length}`;
+        }
+
+        function nextSlidePresentation() {
+            if (state.currentSlideIndex < state.slides.length - 1) {
+                state.currentSlideIndex++;
+                renderPresentationSlide();
+            } else {
+                showToast('จบการนำเสนอสไลด์สุดท้ายแล้ว');
+            }
+        }
+
+        function prevSlidePresentation() {
+            if (state.currentSlideIndex > 0) {
+                state.currentSlideIndex--;
+                renderPresentationSlide();
+            }
+        }
+
+        function toggleLaserPointer() {
+            state.laserActive = !state.laserActive;
+            const overlay = document.getElementById('presentationOverlay');
+            const dot = document.getElementById('laserDot');
+            const btn = document.getElementById('laserBtn');
+
+            overlay.classList.toggle('laser-cursor', state.laserActive);
+            dot.style.display = state.laserActive ? 'block' : 'none';
+            btn.classList.toggle('bg-red-600/60', state.laserActive);
+        }
+
+        function toggleFullscreenElement() {
+            if (!document.fullscreenElement) {
+                document.getElementById('presentationOverlay').requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+
+        function exitPresentation() {
+            state.isPresenting = false;
+            state.laserActive = false;
+            document.getElementById('laserDot').style.display = 'none';
+            const overlay = document.getElementById('presentationOverlay');
+            overlay.classList.remove('flex', 'laser-cursor');
+            overlay.classList.add('hidden');
+
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            }
+            renderAll();
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && state.isPresenting) {
+                // Keep presentation overlay responsive even if user exits browser fullscreen
+                scalePresentationStage();
+            }
+        });
+
+        function changeZoom(delta) {
+            state.zoom = Math.max(0.3, Math.min(2.0, +(state.zoom + delta).toFixed(2)));
+            renderMainStage();
+        }
+
+        function resetZoom() {
+            state.zoom = 0.85;
+            renderMainStage();
+        }
+
+        function toggleGrid() {
+            state.showGrid = !state.showGrid;
+            document.getElementById('gridOverlay').classList.toggle('hidden', !state.showGrid);
+        }
+
+        function toggleSpeakerNotes() {
+            const panel = document.getElementById('speakerNotesPanel');
+            panel.classList.toggle('hidden');
+        }
+
+        function updateSpeakerNotes(val) {
+            const slide = getCurrentSlide();
+            if (slide) slide.notes = val;
+        }
+
+        function updateSlideTransition(val) {
+            const slide = getCurrentSlide();
+            if (slide) {
+                slide.transition = val;
+                saveStateToHistory('เปลี่ยนเอฟเฟกต์สไลด์');
+            }
+        }
+
+        function applyTransitionToAll() {
+            const val = document.getElementById('transitionSelect').value;
+            state.slides.forEach(s => s.transition = val);
+            saveStateToHistory('ใช้เอฟเฟกต์กับทุกสไลด์');
+            showToast('ใช้เอฟเฟกต์การเปลี่ยนสไลด์กับทุกหน้าแล้ว');
+        }
+
+        function toggleStar() {
+            state.starred = !state.starred;
+            const btn = document.getElementById('starBtn');
+            btn.innerHTML = state.starred
+                ? '<i class="ph-fill ph-star text-lg text-amber-400"></i>'
+                : '<i class="ph ph-star text-lg"></i>';
+        }
+
+        function focusTitle() {
+            const inp = document.getElementById('presentationTitle');
+            inp.focus();
+            inp.select();
+        }
+
+        function createNewPresentation() {
+            state.title = 'งานนำเสนอใหม่';
+            state.slides = [createSlideByLayout('title', THEMES[0])];
+            state.currentSlideIndex = 0;
+            state.selectedElementId = null;
+            saveStateToHistory('สร้างงานนำเสนอใหม่');
+            renderAll();
+            showToast('สร้างงานนำเสนอใหม่เรียบร้อย');
+        }
+
+        function loadDemoTemplate() {
+            createDefaultStarterDeck();
+            saveStateToHistory('โหลดเทมเพลตตัวอย่าง');
+            renderAll();
+            showToast('โหลดเทมเพลตตัวอย่างแล้ว');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toastNotification');
+            document.getElementById('toastText').innerText = msg;
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 2600);
+        }
+
+        // Global Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            // Presentation Mode Shortcuts
+            if (state.isPresenting) {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    nextSlidePresentation();
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'Backspace') {
+                    e.preventDefault();
+                    prevSlidePresentation();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    exitPresentation();
+                } else if (e.key.toLowerCase() === 'l') {
+                    e.preventDefault();
+                    toggleLaserPointer();
+                }
+                return;
+            }
+
+            // Ignore shortcuts when typing inside inputs, textareas, or contentEditable
+            const activeTag = document.activeElement ? document.activeElement.tagName : '';
+            const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || document.activeElement?.isContentEditable;
+            if (isTyping) return;
+
+            if (e.key === 'F5') {
+                e.preventDefault();
+                startPresentation(e.ctrlKey ? 0 : state.currentSlideIndex);
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedElementId) {
+                e.preventDefault();
+                deleteSelectedElement();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                undo();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                redo();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+                e.preventDefault();
+                if (state.selectedElementId) duplicateSelectedElement();
+                else duplicateCurrentSlide();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+                e.preventDefault();
+                addNewSlide();
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+                e.preventDefault();
+                toggleTextProp('bold');
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+                e.preventDefault();
+                toggleTextProp('italic');
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u') {
+                e.preventDefault();
+                toggleTextProp('underline');
+            }
+        });
+
+        // Initialize App on Load
+        window.onload = function() {
+            initRightSidebarContent();
+            const saved = localStorage.getItem('slides_clone_autosave');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (parsed.slides && parsed.slides.length > 0) {
+                        state.title = parsed.title || 'งานนำเสนอไม่มีชื่อ';
+                        state.slides = parsed.slides;
+                        state.currentSlideIndex = 0;
+                    } else {
+                        createDefaultStarterDeck();
+                    }
+                } catch {
+                    createDefaultStarterDeck();
+                }
+            } else {
+                createDefaultStarterDeck();
+            }
+
+            saveStateToHistory('เริ่มต้นระบบ');
+            renderAll();
+        };
+    </script>
+</body>
+</html>
